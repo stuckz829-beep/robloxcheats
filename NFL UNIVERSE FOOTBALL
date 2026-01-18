@@ -1,17 +1,16 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "All-In-One Pro V11",
-   LoadingTitle = "Physics & Football Hub",
-   LoadingSubtitle = "by YourName",
+   Name = "Football Pro V13",
+   LoadingTitle = "NFL UNIVERSE FOOTBALL Magging Hub",
+   LoadingSubtitle = "by unknown",
    ConfigurationSaving = { Enabled = true, FolderName = "HeadConfigs", FileName = "Main" },
    KeySystem = false,
 })
 
 -- Logic Variables
 local MaggingEnabled = false
-local MagIntensity = 30
-local MagRange = 15
+local MagPower = 30 -- This now controls both Range AND Strength
 
 local HeadHopEnabled = false
 local BounceHeight = 50
@@ -25,7 +24,9 @@ local JumpStartTime = 0
 local TargetGravity = 196.2
 local DefaultGravity = 196.2
 
--- Create the Tab
+-- Visual Element Reference
+local MagVisual = nil
+
 local MainTab = Window:CreateTab("Main Hub", 4483362458) 
 
 --- 1. FOOTBALL MAGGING SECTION ---
@@ -35,28 +36,37 @@ MainTab:CreateToggle({
    Name = "Enable Magging",
    CurrentValue = false,
    Flag = "MagToggle",
-   Callback = function(Value) MaggingEnabled = Value end,
+   Callback = function(Value) 
+      MaggingEnabled = Value 
+      if not Value and MagVisual then
+         MagVisual:Destroy()
+         MagVisual = nil
+      end
+   end,
 })
 
+-- Unified Slider: Controls Strength and Sphere Size
 MainTab:CreateSlider({
-   Name = "Magging Intensity",
+   Name = "Magging Distance",
    Range = {0, 100},
    Increment = 1,
-   Suffix = " Power",
-   CurrentValue = 30,
+   Suffix = " Power/Range",
+   CurrentValue = 1,
    Flag = "MagSlider",
-   Callback = function(Value) MagIntensity = Value end,
+   Callback = function(Value) 
+      MagPower = Value 
+   end,
 })
 
 --- 2. WORLD PHYSICS SECTION ---
 MainTab:CreateSection("Personal Physics")
 
-local SpeedSlider = MainTab:CreateSlider({
+MainTab:CreateSlider({
    Name = "WalkSpeed",
-   Range = {16, 150},
+   Range = {18, 150},
    Increment = 1,
    Suffix = " Speed",
-   CurrentValue = 16,
+   CurrentValue = 18,
    Flag = "Speed", 
    Callback = function(Value)
       if game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -65,9 +75,9 @@ local SpeedSlider = MainTab:CreateSlider({
    end,
 })
 
-local GravitySlider = MainTab:CreateSlider({
+MainTab:CreateSlider({
    Name = "Player Gravity",
-   Range = {0, 500},
+   Range = {0, 196.2},
    Increment = 0.2,
    Suffix = " Gravity",
    CurrentValue = 196.2, 
@@ -77,29 +87,13 @@ local GravitySlider = MainTab:CreateSlider({
 
 --- 3. HEAD BOUNCE SECTION ---
 MainTab:CreateSection("Head Bounce Settings")
-
-MainTab:CreateToggle({
-   Name = "Enable Head Hop",
-   CurrentValue = false,
-   Flag = "HopToggle",
-   Callback = function(Value) HeadHopEnabled = Value end,
-})
-
-MainTab:CreateSlider({
-   Name = "Bounce Height",
-   Range = {20, 300},
-   Increment = 10,
-   Suffix = " Studs",
-   CurrentValue = 50,
-   Flag = "HeightSlider",
-   Callback = function(Value) BounceHeight = Value end,
-})
+MainTab:CreateToggle({Name = "Enable Boost Tech", CurrentValue = false, Flag = "HopToggle", Callback = function(Value) HeadHopEnabled = Value end})
+MainTab:CreateSlider({Name = "Boost Height", Range = {1, 300}, Increment = 1, Suffix = " Studs", CurrentValue = 1, Flag = "HeightSlider", Callback = function(Value) BounceHeight = Value end})
 
 --- 4. HEAD EXPANDER SECTION ---
 MainTab:CreateSection("Head Expander (Others)")
-
 MainTab:CreateToggle({
-   Name = "Expand Others Heads",
+   Name = "Enable Head Size",
    CurrentValue = false,
    Flag = "ExpandToggle",
    Callback = function(Value) 
@@ -108,41 +102,15 @@ MainTab:CreateToggle({
          for _, player in pairs(game.Players:GetPlayers()) do
             if player ~= game.Players.LocalPlayer and player.Character then
                local head = player.Character:FindFirstChild("Head")
-               if head then
-                  head.Size = Vector3.new(2, 1, 1)
-                  head.Transparency = 0
-                  head.CanCollide = true
-               end
+               if head then head.Size = Vector3.new(2, 1, 1) head.Transparency = 0 head.CanCollide = true end
             end
          end
       end
    end,
 })
+MainTab:CreateSlider({Name = "Head Size", Range = {1, 20}, Increment = 1, Suffix = " Studs", CurrentValue = 1, Flag = "SizeSlider", Callback = function(Value) HeadSize = Value end})
 
-MainTab:CreateSlider({
-   Name = "Head Size",
-   Range = {1, 20},
-   Increment = 1,
-   Suffix = " Studs",
-   CurrentValue = 5,
-   Flag = "SizeSlider",
-   Callback = function(Value) HeadSize = Value end,
-})
-
-MainTab:CreateButton({
-   Name = "Reset All to Default",
-   Callback = function()
-      local char = game.Players.LocalPlayer.Character
-      if char and char:FindFirstChild("Humanoid") then
-         char.Humanoid.WalkSpeed = 16
-         TargetGravity = 196.2
-         SpeedSlider:Set(16)
-         GravitySlider:Set(196.2)
-      end
-   end,
-})
-
---- LOGIC ENGINE (RUNS EVERY FRAME) ---
+--- LOGIC ENGINE ---
 
 local function checkInventoryForFootball()
     local lp = game.Players.LocalPlayer
@@ -174,30 +142,42 @@ game:GetService("RunService").RenderStepped:Connect(function()
     end
     local forceObj = root:FindFirstChild("GravityForce") or Instance.new("VectorForce", root)
     if not root:FindFirstChild("GravityAttachment") then Instance.new("Attachment", root).Name = "GravityAttachment" end
-    forceObj.Name = "GravityForce"
-    forceObj.Attachment0 = root.GravityAttachment
-    forceObj.RelativeTo = Enum.ActuatorRelativeTo.World
     forceObj.Force = Vector3.new(0, totalMass * (DefaultGravity - TargetGravity), 0)
 
-    -- 2. Jump Timing Tracker
-    if hum.FloorMaterial ~= Enum.Material.Air then
-        JumpStartTime = 0
-    else
+    -- 2. Jump Timing & Football Check
+    if hum.FloorMaterial ~= Enum.Material.Air then JumpStartTime = 0 else
         if JumpStartTime == 0 then JumpStartTime = now end
     end
     local hasJumpedLongEnough = (JumpStartTime ~= 0) and (now - JumpStartTime >= 0.15)
     local hasBall = checkInventoryForFootball()
 
-    -- 3. Football Magging
-    if MaggingEnabled then
-        local ball = findFootballInWorkspace()
-        if ball then
-            local catchZone = root.Position + (root.CFrame.LookVector * 2) + Vector3.new(0, 1, 0)
-            if (catchZone - ball.Position).Magnitude <= MagRange then
-                local dir = (catchZone - ball.Position).Unit
-                ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity:Lerp(dir * MagIntensity, 0.15)
-            end
+    -- 3. Unified Football Magging & Visual Sphere
+    local ball = findFootballInWorkspace()
+    if MaggingEnabled and ball then
+        if not MagVisual then
+            MagVisual = Instance.new("Part")
+            MagVisual.Shape = Enum.PartType.Ball
+            MagVisual.Color = Color3.fromRGB(255, 0, 0)
+            MagVisual.Transparency = 0.65
+            MagVisual.CanCollide = false
+            MagVisual.Anchored = true
+            MagVisual.Material = Enum.Material.ForceField
+            MagVisual.Parent = game.Workspace
         end
+        
+        -- Sphere diameter is Power * 2 to represent the radius
+        MagVisual.Position = ball.Position
+        MagVisual.Size = Vector3.new(MagPower * 2, MagPower * 2, MagPower * 2)
+
+        -- Apply Magging Physics (Distance check uses the Power value)
+        local catchZone = root.Position + (root.CFrame.LookVector * 2) + Vector3.new(0, 1, 0)
+        if (catchZone - ball.Position).Magnitude <= MagPower then
+            local dir = (catchZone - ball.Position).Unit
+            ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity:Lerp(dir * MagPower, 0.15)
+        end
+    elseif MagVisual then
+        MagVisual:Destroy()
+        MagVisual = nil
     end
 
     -- 4. Head Expander & Hop
@@ -208,7 +188,6 @@ game:GetService("RunService").RenderStepped:Connect(function()
                 if head then
                     head.Size = Vector3.new(HeadSize, HeadSize, HeadSize)
                     head.Transparency = 0.4
-                    -- Only collide if in air for 0.15s AND no football in hand
                     head.CanCollide = (not hasBall and hasJumpedLongEnough and (now - LastBounce >= BounceCooldown))
                 end
             end
