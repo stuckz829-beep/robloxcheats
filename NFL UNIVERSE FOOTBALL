@@ -10,15 +10,15 @@ local Window = Rayfield:CreateWindow({
 
 -- Logic Variables
 local MaggingEnabled = false
-local MagPower = 30 -- This now controls both Range AND Strength
+local MagPower = 1 -- This now controls both Range AND Strength
 
 local HeadHopEnabled = false
-local BounceHeight = 50
+local BounceHeight = 1
 local BounceCooldown = 0.15 
 local LastBounce = 0
 
 local ExpandEnabled = false
-local HeadSize = 5
+local HeadSize = 1
 local JumpStartTime = 0 
 
 local TargetGravity = 196.2
