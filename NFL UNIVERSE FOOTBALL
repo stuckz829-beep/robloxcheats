@@ -1,0 +1,225 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "All-In-One Pro V11",
+   LoadingTitle = "Physics & Football Hub",
+   LoadingSubtitle = "by YourName",
+   ConfigurationSaving = { Enabled = true, FolderName = "HeadConfigs", FileName = "Main" },
+   KeySystem = false,
+})
+
+-- Logic Variables
+local MaggingEnabled = false
+local MagIntensity = 30
+local MagRange = 15
+
+local HeadHopEnabled = false
+local BounceHeight = 50
+local BounceCooldown = 0.15 
+local LastBounce = 0
+
+local ExpandEnabled = false
+local HeadSize = 5
+local JumpStartTime = 0 
+
+local TargetGravity = 196.2
+local DefaultGravity = 196.2
+
+-- Create the Tab
+local MainTab = Window:CreateTab("Main Hub", 4483362458) 
+
+--- 1. FOOTBALL MAGGING SECTION ---
+MainTab:CreateSection("Football Magging")
+
+MainTab:CreateToggle({
+   Name = "Enable Magging",
+   CurrentValue = false,
+   Flag = "MagToggle",
+   Callback = function(Value) MaggingEnabled = Value end,
+})
+
+MainTab:CreateSlider({
+   Name = "Magging Intensity",
+   Range = {0, 100},
+   Increment = 1,
+   Suffix = " Power",
+   CurrentValue = 30,
+   Flag = "MagSlider",
+   Callback = function(Value) MagIntensity = Value end,
+})
+
+--- 2. WORLD PHYSICS SECTION ---
+MainTab:CreateSection("Personal Physics")
+
+local SpeedSlider = MainTab:CreateSlider({
+   Name = "WalkSpeed",
+   Range = {16, 150},
+   Increment = 1,
+   Suffix = " Speed",
+   CurrentValue = 16,
+   Flag = "Speed", 
+   Callback = function(Value)
+      if game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
+         game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Value
+      end
+   end,
+})
+
+local GravitySlider = MainTab:CreateSlider({
+   Name = "Player Gravity",
+   Range = {0, 500},
+   Increment = 0.2,
+   Suffix = " Gravity",
+   CurrentValue = 196.2, 
+   Flag = "PlayerGravity", 
+   Callback = function(Value) TargetGravity = Value end,
+})
+
+--- 3. HEAD BOUNCE SECTION ---
+MainTab:CreateSection("Head Bounce Settings")
+
+MainTab:CreateToggle({
+   Name = "Enable Head Hop",
+   CurrentValue = false,
+   Flag = "HopToggle",
+   Callback = function(Value) HeadHopEnabled = Value end,
+})
+
+MainTab:CreateSlider({
+   Name = "Bounce Height",
+   Range = {20, 300},
+   Increment = 10,
+   Suffix = " Studs",
+   CurrentValue = 50,
+   Flag = "HeightSlider",
+   Callback = function(Value) BounceHeight = Value end,
+})
+
+--- 4. HEAD EXPANDER SECTION ---
+MainTab:CreateSection("Head Expander (Others)")
+
+MainTab:CreateToggle({
+   Name = "Expand Others Heads",
+   CurrentValue = false,
+   Flag = "ExpandToggle",
+   Callback = function(Value) 
+      ExpandEnabled = Value 
+      if not Value then
+         for _, player in pairs(game.Players:GetPlayers()) do
+            if player ~= game.Players.LocalPlayer and player.Character then
+               local head = player.Character:FindFirstChild("Head")
+               if head then
+                  head.Size = Vector3.new(2, 1, 1)
+                  head.Transparency = 0
+                  head.CanCollide = true
+               end
+            end
+         end
+      end
+   end,
+})
+
+MainTab:CreateSlider({
+   Name = "Head Size",
+   Range = {1, 20},
+   Increment = 1,
+   Suffix = " Studs",
+   CurrentValue = 5,
+   Flag = "SizeSlider",
+   Callback = function(Value) HeadSize = Value end,
+})
+
+MainTab:CreateButton({
+   Name = "Reset All to Default",
+   Callback = function()
+      local char = game.Players.LocalPlayer.Character
+      if char and char:FindFirstChild("Humanoid") then
+         char.Humanoid.WalkSpeed = 16
+         TargetGravity = 196.2
+         SpeedSlider:Set(16)
+         GravitySlider:Set(196.2)
+      end
+   end,
+})
+
+--- LOGIC ENGINE (RUNS EVERY FRAME) ---
+
+local function checkInventoryForFootball()
+    local lp = game.Players.LocalPlayer
+    if lp.Character and lp.Character:FindFirstChild("Football") then return true end
+    if lp.Backpack:FindFirstChild("Football") then return true end
+    return false
+end
+
+local function findFootballInWorkspace()
+    for _, v in pairs(game.Workspace:GetDescendants()) do
+        if v.Name == "Football" and v:IsA("BasePart") then return v end
+    end
+    return nil
+end
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    local lp = game.Players.LocalPlayer
+    local char = lp.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local now = tick()
+
+    if not char or not root or not hum then return end
+
+    -- 1. Personal Gravity
+    local totalMass = 0
+    for _, part in pairs(char:GetChildren()) do
+        if part:IsA("BasePart") then totalMass = totalMass + part:GetMass() end
+    end
+    local forceObj = root:FindFirstChild("GravityForce") or Instance.new("VectorForce", root)
+    if not root:FindFirstChild("GravityAttachment") then Instance.new("Attachment", root).Name = "GravityAttachment" end
+    forceObj.Name = "GravityForce"
+    forceObj.Attachment0 = root.GravityAttachment
+    forceObj.RelativeTo = Enum.ActuatorRelativeTo.World
+    forceObj.Force = Vector3.new(0, totalMass * (DefaultGravity - TargetGravity), 0)
+
+    -- 2. Jump Timing Tracker
+    if hum.FloorMaterial ~= Enum.Material.Air then
+        JumpStartTime = 0
+    else
+        if JumpStartTime == 0 then JumpStartTime = now end
+    end
+    local hasJumpedLongEnough = (JumpStartTime ~= 0) and (now - JumpStartTime >= 0.15)
+    local hasBall = checkInventoryForFootball()
+
+    -- 3. Football Magging
+    if MaggingEnabled then
+        local ball = findFootballInWorkspace()
+        if ball then
+            local catchZone = root.Position + (root.CFrame.LookVector * 2) + Vector3.new(0, 1, 0)
+            if (catchZone - ball.Position).Magnitude <= MagRange then
+                local dir = (catchZone - ball.Position).Unit
+                ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity:Lerp(dir * MagIntensity, 0.15)
+            end
+        end
+    end
+
+    -- 4. Head Expander & Hop
+    if ExpandEnabled then
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if player ~= lp and player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                if head then
+                    head.Size = Vector3.new(HeadSize, HeadSize, HeadSize)
+                    head.Transparency = 0.4
+                    -- Only collide if in air for 0.15s AND no football in hand
+                    head.CanCollide = (not hasBall and hasJumpedLongEnough and (now - LastBounce >= BounceCooldown))
+                end
+            end
+        end
+    end
+
+    if HeadHopEnabled and hasJumpedLongEnough and not hasBall and (now - LastBounce >= BounceCooldown) then
+        local ray = workspace:Raycast(root.Position, Vector3.new(0, -6, 0))
+        if ray and ray.Instance and ray.Instance.Name == "Head" then
+            LastBounce = now
+            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, BounceHeight, root.AssemblyLinearVelocity.Z)
+        end
+    end
+end)
