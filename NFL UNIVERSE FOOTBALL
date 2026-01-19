@@ -87,7 +87,7 @@ RunService.RenderStepped:Connect(function()
     if not Character or not Root then return end
     local now = tick()
 
-    -- Optimized Gravity: Avoid constant Instance.new in loop
+    -- Optimized Gravity
     local forceObj = Root:FindFirstChild("GravityForce")
     if not forceObj then
         forceObj = Instance.new("VectorForce")
@@ -100,7 +100,7 @@ RunService.RenderStepped:Connect(function()
     end
     forceObj.Force = Vector3.new(0, TotalMass * (DefaultGravity - TargetGravity), 0)
 
-    -- Optimized Magging
+    -- UPDATED: Precise Straight-Line Magging
     local ball = findFootballInWorkspace()
     if MaggingEnabled and ball then
         if not MagVisual then
@@ -112,15 +112,18 @@ RunService.RenderStepped:Connect(function()
         MagVisual.Position, MagVisual.Size = ball.Position, Vector3.new(MagPower * 2, MagPower * 2, MagPower * 2)
         
         if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-            local pullDir = (ball.Position - Root.Position).Unit
-            Root.AssemblyLinearVelocity = pullDir * math.clamp(MagPower * 2, 20, 130)
+            -- Calculate precise direction vector
+            local direction = (ball.Position - Root.Position).Unit
+            -- Apply velocity directly toward the ball without adding to current momentum (prevents drifting)
+            local pullSpeed = math.clamp(MagPower * 2.5, 20, 150)
+            Root.AssemblyLinearVelocity = direction * pullSpeed
         end
     elseif MagVisual then 
         MagVisual:Destroy() 
         MagVisual = nil 
     end
 
-    -- Optimized Head Expander (Runs checks only if enabled)
+    -- Optimized Head Expander
     if ExpandEnabled then
         for _, player in pairs(game.Players:GetPlayers()) do
             if player ~= lp and player.Character then
@@ -128,7 +131,7 @@ RunService.RenderStepped:Connect(function()
                 if head then
                     head.Size = Vector3.new(HeadSize, HeadSize, HeadSize)
                     head.Transparency = 0.5 
-                    head.CanCollide = false -- Improved performance over raycasting every frame
+                    head.CanCollide = false
                 end
             end
         end
