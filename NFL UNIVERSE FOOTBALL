@@ -1,22 +1,22 @@
--- Updated 2026 Loader with Player Pull, Noclip, Head Bounce, Fixed Flight
+-- Updated 2026 Loader with Smooth Flight + XZ Head Scaling
 getgenv().SecureMode = true
 
--- Load Rayfield properly
+-- Load Rayfield
 local success, Rayfield = pcall(function()
-    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 end)
 if not success then
     warn("Failed to load Rayfield GUI!")
     return
 end
 
--- CREATE WINDOW
+-- WINDOW
 local Window = Rayfield:CreateWindow({
-   Name = "Ultimate Football Hub 2026",
-   LoadingTitle = "Direct Path Logic Applied...",
-   LoadingSubtitle = "by unknown",
-   ConfigurationSaving = { Enabled = true },
-   KeySystem = false
+    Name = "Ultimate Football Hub 2026",
+    LoadingTitle = "Direct Path Logic Applied...",
+    LoadingSubtitle = "by unknown",
+    ConfigurationSaving = { Enabled = true },
+    KeySystem = false
 })
 
 -- SERVICES
@@ -24,41 +24,39 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
 -- VARIABLES
-local isHeadModEnabled, targetHeadScale = false, 1
+local isHeadModEnabled, targetHeadScale = false, 5
 local isBounceEnabled, bouncePower = false, 50
 local isMagEnabled, magRange = false, 0.5
 local isNoclipEnabled = false
 local isFlying, flySpeed = false, 50
-local currentBall, visualSphere = nil, nil
+local flyVelocity = Vector3.zero
+local flyAccel, flyFriction = 8, 6
+
+local currentBall = nil
 local isPulling = false
-local HEAD_BOUNCE_COOLDOWN = 2 -- seconds
+local HEAD_BOUNCE_COOLDOWN = 3
 local headBounceCooldowns = {}
 local isTouchingHead = {}
 
 -- BALL SEARCH
 task.spawn(function()
     while task.wait(0.5) do
-        currentBall = workspace:FindFirstChild("Football", true) or workspace:FindFirstChild("Ball", true)
+        currentBall = workspace:FindFirstChild("Football", true)
+            or workspace:FindFirstChild("Ball", true)
     end
 end)
 
--- WAIT FOR CHARACTER
-local function waitForChar()
-    local char = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local hum = char:WaitForChild("Humanoid")
-    return char, hrp, hum
-end
-
--- MOUSE INPUT TRACKING
-UIS.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+-- INPUT
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         isPulling = true
     end
 end)
+
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         isPulling = false
@@ -67,11 +65,11 @@ end)
 
 -- CORE LOOP
 RunService.Stepped:Connect(function(_, delta)
-    local char, hrp, hum = localPlayer.Character, nil, nil
-    if char then
-        hrp = char:FindFirstChild("HumanoidRootPart")
-        hum = char:FindFirstChildOfClass("Humanoid")
-    end
+    local char = localPlayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
     -- NOCLIP
@@ -87,39 +85,62 @@ RunService.Stepped:Connect(function(_, delta)
     if currentBall and isMagEnabled and isPulling then
         local parent = currentBall.Parent
         if parent and not parent:FindFirstChildOfClass("Humanoid") then
-            local charPos = hrp.Position
-            local ballPos = currentBall.Position
-            local direction = ballPos - charPos
-            local distance = direction.Magnitude
-            if distance > 0.1 then
-                local speedFactor = (magRange^3) * 0.05
-                hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(ballPos), speedFactor)
+            local direction = currentBall.Position - hrp.Position
+            local dist = direction.Magnitude
+            if dist > 0.1 then
+                local speedFactor = (magRange ^ 3) * 0.05
+                hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(currentBall.Position), speedFactor)
             end
         end
     end
 
-    -- HEAD MOD & BOOST TECH
+    -- HEAD MOD + BOOST TECH (XZ ONLY)
     if isHeadModEnabled then
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= localPlayer and player.Character then
                 local head = player.Character:FindFirstChild("Head")
                 if head then
-                    head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
+                    if not head:FindFirstChild("OriginalY") then
+                        local v = Instance.new("NumberValue")
+                        v.Name = "OriginalY"
+                        v.Value = head.Size.Y
+                        v.Parent = head
+                    end
+
+                    head.Size = Vector3.new(
+                        targetHeadScale,
+                        head.OriginalY.Value,
+                        targetHeadScale
+                    )
                     head.Transparency = 0.5
 
-                    local rayParam = RaycastParams.new()
-                    rayParam.FilterDescendantsInstances = {char}
-                    rayParam.FilterType = Enum.RaycastFilterType.Exclude
+                    local rayParams = RaycastParams.new()
+                    rayParams.FilterDescendantsInstances = {char}
+                    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
                     local rayLength = (hrp.Position.Y - head.Position.Y) + 1
-                    local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -rayLength, 0), rayParam)
+                    local ray = workspace:Raycast(
+                        hrp.Position,
+                        Vector3.new(0, -rayLength, 0),
+                        rayParams
+                    )
 
                     local now = tick()
                     if ray and ray.Instance == head then
                         head.CanCollide = true
-                        local lastBounce = headBounceCooldowns[player] or 0
+                        local last = headBounceCooldowns[player] or 0
                         local touching = isTouchingHead[player] or false
-                        if isBounceEnabled and hrp.AssemblyLinearVelocity.Y < 0 and not touching and (now - lastBounce >= HEAD_BOUNCE_COOLDOWN) then
-                            hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, bouncePower, hrp.AssemblyLinearVelocity.Z)
+
+                        if isBounceEnabled
+                            and hrp.AssemblyLinearVelocity.Y < 0
+                            and not touching
+                            and (now - last >= HEAD_BOUNCE_COOLDOWN)
+                        then
+                            hrp.AssemblyLinearVelocity = Vector3.new(
+                                hrp.AssemblyLinearVelocity.X,
+                                bouncePower,
+                                hrp.AssemblyLinearVelocity.Z
+                            )
                             headBounceCooldowns[player] = now
                             isTouchingHead[player] = true
                         end
@@ -132,87 +153,120 @@ RunService.Stepped:Connect(function(_, delta)
         end
     end
 
-    -- FLIGHT
+    -- SMOOTH FLIGHT
     if isFlying then
-        local moveDir = Vector3.new()
-        if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir += hrp.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir -= hrp.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir -= hrp.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir += hrp.CFrame.RightVector end
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+
+        local moveDir = Vector3.zero
+        if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
         if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0,1,0) end
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir -= Vector3.new(0,1,0) end
 
         if moveDir.Magnitude > 0 then
-            moveDir = moveDir.Unit
-            hrp.Velocity = moveDir * flySpeed
+            flyVelocity = flyVelocity:Lerp(moveDir.Unit * flySpeed, flyAccel * delta)
         else
-            hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0)
+            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction * delta)
         end
+
+        hrp.AssemblyLinearVelocity = flyVelocity
+    else
+        flyVelocity = Vector3.zero
     end
 end)
 
 -- GUI
 local MainTab = Window:CreateTab("All Mods", 4483362458)
 
--- Player Physics
 MainTab:CreateSection("Player Physics")
 MainTab:CreateSlider({
     Name = "Gravity",
     Range = {1, 196.2},
     Increment = 1,
-    Suffix = "Gravity",
     CurrentValue = 181,
     Callback = function(v) workspace.Gravity = v end
 })
-MainTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(v) isNoclipEnabled = v end})
+
+MainTab:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Callback = function(v) isNoclipEnabled = v end
+})
+
 MainTab:CreateSlider({
     Name = "WalkSpeed",
     Range = {18, 200},
     Increment = 1,
-    Suffix = "Speed",
     CurrentValue = 18,
     Callback = function(v)
-        if localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") then
-            localPlayer.Character.Humanoid.WalkSpeed = v
-        end
-    end
-})
-MainTab:CreateSlider({
-    Name = "Jump Power",
-    Range = {50, 500},
-    Increment = 1,
-    Suffix = "Power",
-    CurrentValue = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") and localPlayer.Character:FindFirstChildOfClass("Humanoid").JumpPower or 50,
-    Callback = function(v)
         local hum = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.JumpPower = v
-        end
+        if hum then hum.WalkSpeed = v end
     end
 })
 
--- Player-to-Ball Pull
 MainTab:CreateSection("Player Magnet")
-MainTab:CreateToggle({Name = "Click-to-Pull To Ball", CurrentValue = false, Callback = function(v) isMagEnabled = v end})
+MainTab:CreateToggle({
+    Name = "Click-to-Pull To Ball",
+    CurrentValue = false,
+    Callback = function(v) isMagEnabled = v end
+})
+
 MainTab:CreateSlider({
     Name = "Pull Strength",
     Range = {0.1, 1},
     Increment = 0.05,
-    Suffix = "",
     CurrentValue = 0.5,
     Callback = function(v) magRange = v end
 })
 
--- Head Mod & Bounce
-MainTab:CreateSection("Head Mod & Bounce")
-MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
-MainTab:CreateSlider({Name = "Head Size", Range = {1, 15}, Increment = 0.5, CurrentValue = 5, Callback = function(v) targetHeadScale = v end})
-MainTab:CreateToggle({Name = "Enable Boost Tech", CurrentValue = false, Callback = function(v) isBounceEnabled = v end})
-MainTab:CreateSlider({Name = "Boost Tech", Range = {30, 150}, Increment = 5, CurrentValue = 45, Callback = function(v) bouncePower = v end})
+MainTab:CreateSection("Head Mod & Boost")
+MainTab:CreateToggle({
+    Name = "Enable Head Size",
+    CurrentValue = false,
+    Callback = function(v) isHeadModEnabled = v end
+})
 
--- Flight
+MainTab:CreateSlider({
+    Name = "Head Width (XZ)",
+    Range = {1, 15},
+    Increment = 0.5,
+    CurrentValue = 5,
+    Callback = function(v) targetHeadScale = v end
+})
+
+MainTab:CreateToggle({
+    Name = "Enable Boost Tech",
+    CurrentValue = false,
+    Callback = function(v) isBounceEnabled = v end
+})
+
+MainTab:CreateSlider({
+    Name = "Boost Power",
+    Range = {30, 150},
+    Increment = 5,
+    CurrentValue = 45,
+    Callback = function(v) bouncePower = v end
+})
+
 MainTab:CreateSection("Flight")
-MainTab:CreateToggle({Name = "Enable Flight", CurrentValue = false, Callback = function(v) isFlying = v end})
-MainTab:CreateSlider({Name = "Flight Speed", Range = {10, 200}, Increment = 5, CurrentValue = 50, Callback = function(v) flySpeed = v end})
+MainTab:CreateToggle({
+    Name = "Enable Flight",
+    CurrentValue = false,
+    Callback = function(v) isFlying = v end
+})
 
-Rayfield:Notify({Title = "2026 Stable Loaded", Content = "Click-to-Pull, Boost & Flight ready.", Duration = 5})
+MainTab:CreateSlider({
+    Name = "Flight Speed",
+    Range = {10, 200},
+    Increment = 5,
+    CurrentValue = 50,
+    Callback = function(v) flySpeed = v end
+})
+
+Rayfield:Notify({
+    Title = "2026 Stable Loaded",
+    Content = "Smooth Flight + XZ Head Scaling Active.",
+    Duration = 5
+})
