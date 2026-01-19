@@ -50,7 +50,7 @@ end
 lp.CharacterAdded:Connect(UpdateMass)
 UpdateMass()
 
-local MainTab = Window:CreateTab("Main Hub", 4483362458) 
+local MainTab = Window:CreateTab("Main Hub", 112952645005929) 
 
 MainTab:CreateSection("Football Magging")
 MainTab:CreateToggle({Name = "Enable Magging", CurrentValue = false, Flag = "MagToggle", Callback = function(Value) MaggingEnabled = Value end})
