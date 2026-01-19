@@ -64,7 +64,7 @@ MainTab:CreateSlider({Name = "Player Gravity", Range = {30, 196.2}, Increment = 
 
 MainTab:CreateSection("Head Bounce Settings")
 MainTab:CreateToggle({Name = "Enable Boost Tech", CurrentValue = false, Flag = "HopToggle", Callback = function(Value) HeadHopEnabled = Value end})
-MainTab:CreateSlider({Name = "Boost Height", Range = {1, 300}, Increment = 1, Suffix = " Studs", CurrentValue = 1, Flag = "HeightSlider", Callback = function(Value) BounceHeight = Value end})
+MainTab:CreateSlider({Name = "Boost Height", Range = {1, 300}, Increment = 1, Suffix = " Studs", CurrentValue = 41, Flag = "HeightSlider", Callback = function(Value) BounceHeight = Value end})
 
 MainTab:CreateSection("Head Expander (Others)")
 MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Flag = "ExpandToggle", Callback = function(Value) ExpandEnabled = Value end})
