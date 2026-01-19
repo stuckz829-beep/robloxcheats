@@ -15,7 +15,7 @@ local Window = Rayfield:CreateWindow({
    Name = "Ultimate Football Hub 2026",
    LoadingTitle = "Direct Path Logic Applied...",
    LoadingSubtitle = "by unknown",
-   ConfigurationSaving = { Enabled = false },
+   ConfigurationSaving = { Enabled = true },
    KeySystem = false
 })
 
