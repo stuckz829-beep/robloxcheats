@@ -1,17 +1,14 @@
--- Updated 2026 Loader with Secure Mode & Direct Path
-getgenv().SecureMode = true -- Required for many 2026 executors to prevent detection/crashing
+-- Updated 2026 Loader with Noclip & Auto-Pull
+getgenv().SecureMode = true 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "Ultimate Football Hub 2026",
-   LoadingTitle = "Pull Logic Fix Applied...",
+   LoadingTitle = "Direct Path Logic Applied...",
    LoadingSubtitle = "by 2026 Stable Loader",
    ConfigurationSaving = { Enabled = false },
    KeySystem = false
 })
-
--- TABS
-local MainTab = Window:CreateTab("All Mods", 4483362458)
 
 -- Variables
 local UIS = game:GetService("UserInputService")
@@ -20,7 +17,8 @@ local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 
 local isHeadModEnabled, targetHeadScale = false, 1
-local isMagEnabled, magRange, isMouseDown = false, 15, false
+local isMagEnabled, magRange = false, 15
+local isNoclipEnabled = false
 local visualSphere, currentBall = nil, nil
 
 -- OPTIMIZATION: Search for ball every 0.5s
@@ -30,22 +28,40 @@ task.spawn(function()
     end
 end)
 
--- Input Handling
-UIS.InputBegan:Connect(function(input, gpe) 
-    if not gpe and input.UserInputType == Enum.UserInputType.MouseButton1 then isMouseDown = true end 
-end)
-UIS.InputEnded:Connect(function(input) 
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then isMouseDown = false end 
-end)
-
--- CORE LOGIC LOOP (2026 Force-Pull Edition)
-RunService.Heartbeat:Connect(function()
+-- CORE LOGIC LOOP
+RunService.Stepped:Connect(function()
     local char = localPlayer.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not char then return end
+
+    -- 1. NOCLIP LOGIC
+    if isNoclipEnabled then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- 1. Physics-Bypass Football Magnet
-    if currentBall and isMagEnabled then
+    -- 2. POSSESSION CHECK (Don't pull if someone has it)
+    local function isHeldByOthers()
+        if not currentBall then return false end
+        local parent = currentBall.Parent
+        if parent:FindFirstChildOfClass("Humanoid") and parent ~= char then return true end
+        local weld = currentBall:FindFirstChildWhichIsA("Weld") or currentBall:FindFirstChildWhichIsA("ManualWeld")
+        if weld and weld.Part0 then
+            local potentialChar = weld.Part0:FindFirstAncestorOfClass("Model")
+            if potentialChar and potentialChar:FindFirstChildOfClass("Humanoid") and potentialChar ~= char then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- 3. AUTOMATIC MAGNET LOGIC
+    if currentBall and isMagEnabled and not isHeldByOthers() then
         -- Sphere Visualization
         if not visualSphere then
             visualSphere = Instance.new("Part")
@@ -57,23 +73,17 @@ RunService.Heartbeat:Connect(function()
         visualSphere.Size = Vector3.new(magRange * 2, magRange * 2, magRange * 2)
         visualSphere.Position = currentBall.Position
 
-        if isMouseDown then 
-            local dist = (hrp.Position - currentBall.Position).Magnitude
-            if dist <= magRange then
-                -- The "Catch" point: 1.5 studs in front of your character
-                local catchPoint = hrp.Position + (hrp.CFrame.LookVector * 1.5)
-                
-                -- FORCE PULL: Directly setting CFrame and Velocity to bypass server lag
-                if dist > 2.5 then
-                    -- Smooth travel toward you
-                    local lerpFactor = 0.25 -- Speed of the pull (0.1 to 0.5)
-                    currentBall.CFrame = currentBall.CFrame:Lerp(CFrame.new(catchPoint), lerpFactor)
-                    currentBall.AssemblyLinearVelocity = (catchPoint - currentBall.Position).Unit * 120
-                else
-                    -- CATCH: Lock ball to hands
-                    currentBall.CFrame = CFrame.new(catchPoint)
-                    currentBall.AssemblyLinearVelocity = Vector3.new(0,0,0)
-                end
+        local dist = (hrp.Position - currentBall.Position).Magnitude
+        if dist <= magRange then
+            local catchPoint = hrp.Position + (hrp.CFrame.LookVector * 1.5)
+            
+            -- Direct Path Pull
+            if dist > 2.5 then
+                currentBall.CFrame = currentBall.CFrame:Lerp(CFrame.new(catchPoint), 0.3)
+                currentBall.AssemblyLinearVelocity = (catchPoint - currentBall.Position).Unit * 150
+            else
+                currentBall.CFrame = CFrame.new(catchPoint)
+                currentBall.AssemblyLinearVelocity = Vector3.new(0,0,0)
             end
         end
     elseif visualSphere then
@@ -94,7 +104,7 @@ RunService.Heartbeat:Connect(function()
                     
                     local isStandingOnHead = false
                     local rayParam = RaycastParams.new()
-                    rayParam.FilterDescendantsInstances = {localPlayer.Character}
+                    rayParam.FilterDescendantsInstances = {char}
                     rayParam.FilterType = Enum.RaycastFilterType.Exclude
                     
                     local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
@@ -105,30 +115,26 @@ RunService.Heartbeat:Connect(function()
                     local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
                     local timeSinceJump = tick() - lastJump
 
-                    if isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30) then
-                        head.CanCollide = true
-                    else
-                        head.CanCollide = false
-                    end
+                    head.CanCollide = (isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30))
                 end
             end
         end
     end
 end)
 
+-- TABS
+local MainTab = Window:CreateTab("All Mods", 4483362458)
 
-
--- UI Setup
 MainTab:CreateSection("Player")
+MainTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(v) isNoclipEnabled = v end})
 MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 300}, Increment = 1, Suffix = "Speed", CurrentValue = 18, Callback = function(v) if localPlayer.Character:FindFirstChild("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = v end end})
-MainTab:CreateSlider({Name = "Gravity", Range = {0, 196}, Increment = 1, Suffix = "Grav", CurrentValue = 196, Callback = function(v) workspace.Gravity = v end})
 
 MainTab:CreateSection("Football Magnet")
-MainTab:CreateToggle({Name = "Enable Mags", CurrentValue = false, Callback = function(v) isMagEnabled = v end})
-MainTab:CreateSlider({Name = "Magnet Range", Range = {5, 100}, Increment = 1, Suffix = "Range", CurrentValue = 15, Callback = function(v) magRange = v end})
+MainTab:CreateToggle({Name = "Auto-Pull Football", CurrentValue = false, Callback = function(v) isMagEnabled = v end})
+MainTab:CreateSlider({Name = "Magnet Range", Range = {5, 100}, Increment = 1, Suffix = "Studs", CurrentValue = 15, Callback = function(v) magRange = v end})
 
 MainTab:CreateSection("Server Visuals")
 MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
 MainTab:CreateSlider({Name = "Head Scale", Range = {1, 15}, Increment = 0.5, CurrentValue = 1, Callback = function(v) targetHeadScale = v end})
 
-Rayfield:Notify({Title = "Hub Loaded", Content = "2026 UI & Persistent Head Logic applied.", Duration = 5})
+Rayfield:Notify({Title = "Hub Loaded", Content = "Auto-Pull & Noclip Active", Duration = 5})
