@@ -54,7 +54,7 @@ local MainTab = Window:CreateTab("Main Hub", 112952645005929)
 
 MainTab:CreateSection("Football Magging")
 MainTab:CreateToggle({Name = "Enable Magging", CurrentValue = false, Flag = "MagToggle", Callback = function(Value) MaggingEnabled = Value end})
-MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 1, Suffix = " Speed", CurrentValue = 3, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
+MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 1, Suffix = " Speed", CurrentValue = 18, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
 
 MainTab:CreateSection("Personal Physics")
 MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 150}, Increment = 1, Suffix = " WalkSpeed", CurrentValue = 18, Flag = "Speed", Callback = function(Value)
@@ -68,7 +68,7 @@ MainTab:CreateSlider({Name = "Boost Height", Range = {1, 300}, Increment = 1, Su
 
 MainTab:CreateSection("Head Expander (Others)")
 MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Flag = "ExpandToggle", Callback = function(Value) ExpandEnabled = Value end})
-MainTab:CreateSlider({Name = "Head Size", Range = {1, 20}, Increment = 0.5, Suffix = " Studs", CurrentValue = 1, Flag = "SizeSlider", Callback = function(Value) HeadSize = Value end})
+MainTab:CreateSlider({Name = "Head Size", Range = {1, 20}, Increment = 0.5, Suffix = " Studs", CurrentValue = 2.5, Flag = "SizeSlider", Callback = function(Value) HeadSize = Value end})
 
 -- Logic Helpers
 local function findFootballInWorkspace()
