@@ -97,4 +97,4 @@ MainTab:CreateSection("Server Visuals")
 MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
 MainTab:CreateSlider({Name = "Head Scale", Range = {1, 15}, Increment = 0.5, CurrentValue = 1, Callback = function(v) targetHeadScale = v end})
 
-Rayfield:Notify({Title = "Hub Loaded", Content = "2026 UI fix applied successfully.", Duration = 5})g
+Rayfield:Notify({Title = "Hub Loaded", Content = "2026 UI fix applied successfully.", Duration = 5})
