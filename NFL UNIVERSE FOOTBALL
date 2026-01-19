@@ -33,7 +33,9 @@ local isNoclipEnabled = false
 local isFlying, flySpeed = false, 50
 local currentBall, visualSphere = nil, nil
 local isPulling = false
-local lastBounceTime = 0
+local HEAD_BOUNCE_COOLDOWN = 2 -- seconds
+local headBounceCooldowns = {}
+local isTouchingHead = {}
 
 -- BALL SEARCH
 task.spawn(function()
@@ -81,7 +83,7 @@ RunService.Stepped:Connect(function(_, delta)
         end
     end
 
-    -- PLAYER PULL TO BALL (smooth, click-to-pull, ignores inventory)
+    -- PLAYER PULL TO BALL
     if currentBall and isMagEnabled and isPulling then
         local parent = currentBall.Parent
         if parent and not parent:FindFirstChildOfClass("Humanoid") then
@@ -89,84 +91,65 @@ RunService.Stepped:Connect(function(_, delta)
             local ballPos = currentBall.Position
             local direction = ballPos - charPos
             local distance = direction.Magnitude
-
             if distance > 0.1 then
-                -- Smooth factor: cube slider for ultra-slow low end
-                local speedFactor = (magRange ^ 3) * 0.05
+                local speedFactor = (magRange^3) * 0.05
                 hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(ballPos), speedFactor)
             end
         end
     end
 
--- HEAD MOD & BOOST TECH WITH SINGLE-TRIGGER PER COOLDOWN
-local HEAD_BOUNCE_COOLDOWN = 2 -- seconds
-local headBounceCooldowns = headBounceCooldowns or {}
-local isTouchingHead = isTouchingHead or {}
+    -- HEAD MOD & BOOST TECH
+    if isHeadModEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer and player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                if head then
+                    head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
+                    head.Transparency = 0.5
 
-if isHeadModEnabled then
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            if head then
-                head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
-                head.Transparency = 0.5
+                    local rayParam = RaycastParams.new()
+                    rayParam.FilterDescendantsInstances = {char}
+                    rayParam.FilterType = Enum.RaycastFilterType.Exclude
+                    local rayLength = (hrp.Position.Y - head.Position.Y) + 1
+                    local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -rayLength, 0), rayParam)
 
-                -- Bounce detection
-                local rayParam = RaycastParams.new()
-                rayParam.FilterDescendantsInstances = {char}
-                rayParam.FilterType = Enum.RaycastFilterType.Exclude
-                local rayLength = (hrp.Position.Y - head.Position.Y) + 1
-                local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -rayLength, 0), rayParam)
-
-                local now = tick()
-                if ray and ray.Instance == head then
-                    head.CanCollide = true
-
-                    -- Only bounce if not currently touching AND cooldown passed
-                    if isBounceEnabled and hrp.AssemblyLinearVelocity.Y < 0 then
+                    local now = tick()
+                    if ray and ray.Instance == head then
+                        head.CanCollide = true
                         local lastBounce = headBounceCooldowns[player] or 0
                         local touching = isTouchingHead[player] or false
-                        if not touching and (now - lastBounce >= HEAD_BOUNCE_COOLDOWN) then
-                            -- Apply bounce
+                        if isBounceEnabled and hrp.AssemblyLinearVelocity.Y < 0 and not touching and (now - lastBounce >= HEAD_BOUNCE_COOLDOWN) then
                             hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, bouncePower, hrp.AssemblyLinearVelocity.Z)
                             headBounceCooldowns[player] = now
                             isTouchingHead[player] = true
                         end
+                    else
+                        head.CanCollide = false
+                        isTouchingHead[player] = false
                     end
-                else
-                    head.CanCollide = false
-                    isTouchingHead[player] = false -- reset when off head
                 end
             end
         end
     end
-end
-
-
 
     -- FLIGHT
-if isFlying then
-    local moveDir = Vector3.new()
+    if isFlying then
+        local moveDir = Vector3.new()
+        if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir += hrp.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir -= hrp.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir -= hrp.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir += hrp.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0,1,0) end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir -= Vector3.new(0,1,0) end
 
-    -- Horizontal movement
-    if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + hrp.CFrame.LookVector end
-    if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - hrp.CFrame.LookVector end
-    if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - hrp.CFrame.RightVector end
-    if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + hrp.CFrame.RightVector end
-
-    -- Vertical movement
-    if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
-    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0,1,0) end
-
-    -- Only move if there's input
-    if moveDir.Magnitude > 0 then
-        moveDir = moveDir.Unit -- normalize to avoid speed boost diagonally
-        hrp.Velocity = moveDir * flySpeed -- sets velocity instead of teleporting
-    else
-        hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0) -- keep vertical momentum
+        if moveDir.Magnitude > 0 then
+            moveDir = moveDir.Unit
+            hrp.Velocity = moveDir * flySpeed
+        else
+            hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0)
+        end
     end
-end
-
+end)
 
 -- GUI
 local MainTab = Window:CreateTab("All Mods", 4483362458)
@@ -189,19 +172,17 @@ MainTab:CreateSlider({
     Suffix = "Speed",
     CurrentValue = 18,
     Callback = function(v)
-        if localPlayer.Character:FindFirstChild("Humanoid") then
+        if localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") then
             localPlayer.Character.Humanoid.WalkSpeed = v
         end
     end
 })
-
 MainTab:CreateSlider({
     Name = "Jump Power",
     Range = {50, 500},
     Increment = 1,
     Suffix = "Power",
-    CurrentValue = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") 
-                   and localPlayer.Character:FindFirstChildOfClass("Humanoid").JumpPower or 50,
+    CurrentValue = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") and localPlayer.Character:FindFirstChildOfClass("Humanoid").JumpPower or 50,
     Callback = function(v)
         local hum = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
         if hum then
@@ -234,4 +215,4 @@ MainTab:CreateSection("Flight")
 MainTab:CreateToggle({Name = "Enable Flight", CurrentValue = false, Callback = function(v) isFlying = v end})
 MainTab:CreateSlider({Name = "Flight Speed", Range = {10, 200}, Increment = 5, CurrentValue = 50, Callback = function(v) flySpeed = v end})
 
-Rayfield:Notify({Title = "2026 Stable Loaded", Content = "Click-to-Pull, Bounce & Flight ready.", Duration = 5})
+Rayfield:Notify({Title = "2026 Stable Loaded", Content = "Click-to-Pull, Boost & Flight ready.", Duration = 5})
