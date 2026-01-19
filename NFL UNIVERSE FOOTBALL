@@ -1,124 +1,83 @@
--- Restored Loader for 2026 (Stable URL)
-local success, Rayfield = pcall(function()
-    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-end)
-
-if not success or not Rayfield then 
-    warn("HUB ERROR: Failed to load UI. Ensure loadstring is enabled in your executor.")
-    return 
-end
-
-local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local localPlayer = game.Players.LocalPlayer
-
--- Variables
-local isHeadModEnabled, targetHeadScale = false, 1
-local isMagEnabled, magRange, isMouseDown = false, 15, false
-local visualSphere = nil
+-- Updated 2026 Loader with Secure Mode & Direct Path
+getgenv().SecureMode = true -- Required for many 2026 executors to prevent detection/crashing
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "Ultimate Football Hub 2026",
-   LoadingTitle = "Initializing Hub...",
+   LoadingTitle = "Pull Logic Fix Applied...",
+   LoadingSubtitle = "by 2026 Stable Loader",
    ConfigurationSaving = { Enabled = false },
    KeySystem = false
 })
 
 -- TABS
-local PlayerTab = Window:CreateTab("Player Mods")
-local ServerTab = Window:CreateTab("Server Visuals")
-local FootballTab = Window:CreateTab("Football Mag")
+local MainTab = Window:CreateTab("All Mods", 4483362458)
+
+-- Variables
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+
+local isHeadModEnabled, targetHeadScale = false, 1
+local isMagEnabled, magRange, isMouseDown = false, 15, false
+local visualSphere, currentBall = nil, nil
+
+-- OPTIMIZATION: Search for ball every 0.5s
+task.spawn(function()
+    while task.wait(0.5) do
+        currentBall = workspace:FindFirstChild("Football", true) or workspace:FindFirstChild("Ball", true)
+    end
+end)
 
 -- Input Handling
 UIS.InputBegan:Connect(function(input, gpe) 
-    if not gpe and input.UserInputType == Enum.UserInputType.MouseButton1 then 
-        isMouseDown = true 
-    end 
+    if not gpe and input.UserInputType == Enum.UserInputType.MouseButton1 then isMouseDown = true end 
 end)
 UIS.InputEnded:Connect(function(input) 
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then 
-        isMouseDown = false 
-    end 
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then isMouseDown = false end 
 end)
 
--- Deep Finder for any Football in Workspace
-local function findFootball()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name == "Football" and obj:IsA("BasePart") then
-            return obj
-        end
-    end
-    return nil
-end
+-- CORE LOGIC LOOP
+RunService.Heartbeat:Connect(function()
+    local char = localPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
 
--- Core Logic Loop
-RunService.RenderStepped:Connect(function()
-    local character = localPlayer.Character
-    local hrp = character and character:FindFirstChild("HumanoidRootPart")
-    
-    -- 1. Football Magnet Logic (2026 Physics)
-    local ball = findFootball()
-
-    if ball and isMagEnabled then
+    -- Football Magnet Logic
+    if currentBall and isMagEnabled then
         if not visualSphere then
             visualSphere = Instance.new("Part")
-            visualSphere.Shape = Enum.PartType.Ball
-            visualSphere.Color = Color3.fromRGB(255, 0, 0) -- RED
-            visualSphere.Transparency = 0.6
-            visualSphere.Material = Enum.Material.ForceField
-            visualSphere.CanCollide = false
-            visualSphere.Anchored = true
-            visualSphere.CastShadow = false
+            visualSphere.Shape, visualSphere.Color = Enum.PartType.Ball, Color3.fromRGB(255, 0, 0)
+            visualSphere.Transparency, visualSphere.Material = 0.6, Enum.Material.ForceField
+            visualSphere.CanCollide, visualSphere.Anchored, visualSphere.CastShadow = false, true, false
             visualSphere.Parent = workspace
         end
         visualSphere.Size = Vector3.new(magRange * 0.8, magRange * 0.8, magRange * 0.8)
-        visualSphere.Position = ball.Position
+        visualSphere.Position = currentBall.Position
 
-        if hrp and isMouseDown then
-            local dist = (hrp.Position - ball.Position).Magnitude
+        if isMouseDown then 
+            local dist = (hrp.Position - currentBall.Position).Magnitude
             if dist <= magRange then
-                local direction = (hrp.Position - ball.Position).Unit
-                -- Uses AssemblyLinearVelocity for 2026 game engine compatibility
-                ball.AssemblyLinearVelocity = (direction * 110) + Vector3.new(0, 2, 0)
+                local direction = (hrp.Position - currentBall.Position).Unit
+                currentBall.AssemblyLinearVelocity = (direction * 110) + Vector3.new(0, 2, 0)
             end
         end
-    else
-        if visualSphere then visualSphere:Destroy() visualSphere = nil end
+    elseif visualSphere then
+        visualSphere:Destroy()
+        visualSphere = nil
     end
 
-    -- 2. ORIGINAL RESTORED Head Collision Logic
+    -- Head Collision Logic
     if isHeadModEnabled then
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= localPlayer and player.Character and player.Character:FindFirstChild("Head") then
-                local head = player.Character.Head
-                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-                
-                -- Visual Scaling
-                head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
-                head.Transparency = 0.5
-                
-                -- Restored Collision Logic (Original Raycast + Jump)
-                local isStandingOnHead = false
-                if hrp then
-                    local rayParam = RaycastParams.new()
-                    rayParam.FilterDescendantsInstances = {localPlayer.Character}
-                    rayParam.FilterType = Enum.RaycastFilterType.Exclude
-                    
-                    local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
-                    if ray and ray.Instance == head then
-                        isStandingOnHead = true
-                    end
-                end
-
-                if humanoid then
-                    local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
-                    local timeSinceJump = tick() - lastJump
-
-                    if isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30) then
-                        head.CanCollide = true
-                    else
-                        head.CanCollide = false
-                    end
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer and player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                local hum = player.Character:FindFirstChildOfClass("Humanoid")
+                if head and hum then
+                    head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
+                    head.Transparency = 0.5
+                    head.CanCollide = true
                 end
             end
         end
@@ -126,13 +85,16 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- UI Setup
-PlayerTab:CreateSlider({Name = "WalkSpeed", Range = {18, 300}, Increment = 1, Suffix = "Speed", CurrentValue = 18, Callback = function(v) if localPlayer.Character:FindFirstChild("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = v end end})
-PlayerTab:CreateSlider({Name = "Gravity", Range = {0, 196}, Increment = 1, Suffix = "Grav", CurrentValue = 196, Callback = function(v) workspace.Gravity = v end})
+MainTab:CreateSection("Player")
+MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 300}, Increment = 1, Suffix = "Speed", CurrentValue = 18, Callback = function(v) if localPlayer.Character:FindFirstChild("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = v end end})
+MainTab:CreateSlider({Name = "Gravity", Range = {0, 196}, Increment = 1, Suffix = "Grav", CurrentValue = 196, Callback = function(v) workspace.Gravity = v end})
 
-ServerTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
-ServerTab:CreateSlider({Name = "Range", Range = {1, 15}, Increment = 0.5, CurrentValue = 1, Callback = function(v) targetHeadScale = v end})
+MainTab:CreateSection("Football Magnet")
+MainTab:CreateToggle({Name = "Enable Mags", CurrentValue = false, Callback = function(v) isMagEnabled = v end})
+MainTab:CreateSlider({Name = "Magnet Range", Range = {5, 100}, Increment = 1, Suffix = "Range", CurrentValue = 15, Callback = function(v) magRange = v end})
 
-FootballTab:CreateToggle({Name = "Enable Mags", CurrentValue = false, Callback = function(v) isMagEnabled = v end})
-FootballTab:CreateSlider({Name = "Magnet Range", Range = {5, 100}, Increment = 1, Suffix = "Range", CurrentValue = 15, Callback = function(v) magRange = v end})
+MainTab:CreateSection("Server Visuals")
+MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
+MainTab:CreateSlider({Name = "Head Scale", Range = {1, 15}, Increment = 0.5, CurrentValue = 1, Callback = function(v) targetHeadScale = v end})
 
-Rayfield:Notify({Title = "Hub Loaded", Content = "Script active for 2026.", Duration = 5})
+Rayfield:Notify({Title = "Hub Loaded", Content = "2026 UI fix applied successfully.", Duration = 5})g
