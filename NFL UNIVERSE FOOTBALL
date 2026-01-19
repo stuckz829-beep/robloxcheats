@@ -31,6 +31,9 @@ local isBounceEnabled, bouncePower = false, 50
 local isMagEnabled, magRange = false, 15
 local isNoclipEnabled = false
 local currentBall, visualSphere = nil, nil
+local headBounceCooldowns = {} -- [player] = lastBounceTime
+local HEAD_BOUNCE_COOLDOWN = 2 -- seconds
+
 
 -- BALL SEARCH
 task.spawn(function()
@@ -123,13 +126,19 @@ end
                     local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -rayLength, 0), rayParam)
 
                     if ray and ray.Instance == head then
-                        head.CanCollide = true
-                        if isBounceEnabled and hrp.AssemblyLinearVelocity.Y < 0 then
-                            hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, bouncePower, hrp.AssemblyLinearVelocity.Z)
-                        end
-                    else
-                        head.CanCollide = false
-                    end
+    head.CanCollide = true
+    if isBounceEnabled and hrp.AssemblyLinearVelocity.Y < 0 then
+        local now = tick()
+        local lastBounce = headBounceCooldowns[player] or 0
+        if now - lastBounce >= HEAD_BOUNCE_COOLDOWN then
+            hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, bouncePower, hrp.AssemblyLinearVelocity.Z)
+            headBounceCooldowns[player] = now
+        end
+    end
+else
+    head.CanCollide = false
+end
+
                 end
             end
         end
