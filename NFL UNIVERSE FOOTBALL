@@ -54,7 +54,7 @@ local MainTab = Window:CreateTab("Main Hub", 112952645005929)
 
 MainTab:CreateSection("Football Magging")
 MainTab:CreateToggle({Name = "Enable Magging", CurrentValue = false, Flag = "MagToggle", Callback = function(Value) MaggingEnabled = Value end})
-MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 1, Suffix = " Speed", CurrentValue = 18, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
+MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 0.5, Suffix = " Speed", CurrentValue = 14.5, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
 
 MainTab:CreateSection("Personal Physics")
 MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 150}, Increment = 1, Suffix = " WalkSpeed", CurrentValue = 18, Flag = "Speed", Callback = function(Value)
