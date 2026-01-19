@@ -161,7 +161,7 @@ MainTab:CreateSlider({
     Range = {1, 196.2},
     Increment = 1,
     Suffix = "Gravity",
-    CurrentValue = 196.2,
+    CurrentValue = 181,
     Callback = function(v) workspace.Gravity = v end
 })
 MainTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(v) isNoclipEnabled = v end})
@@ -206,9 +206,9 @@ MainTab:CreateSlider({
 -- Head Mod & Bounce
 MainTab:CreateSection("Head Mod & Bounce")
 MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
-MainTab:CreateSlider({Name = "Head Size", Range = {1, 15}, Increment = 0.5, CurrentValue = 1, Callback = function(v) targetHeadScale = v end})
+MainTab:CreateSlider({Name = "Head Size", Range = {1, 15}, Increment = 0.5, CurrentValue = 5, Callback = function(v) targetHeadScale = v end})
 MainTab:CreateToggle({Name = "Enable Boost Tech", CurrentValue = false, Callback = function(v) isBounceEnabled = v end})
-MainTab:CreateSlider({Name = "Boost Tech", Range = {30, 150}, Increment = 5, CurrentValue = 50, Callback = function(v) bouncePower = v end})
+MainTab:CreateSlider({Name = "Boost Tech", Range = {30, 150}, Increment = 5, CurrentValue = 45, Callback = function(v) bouncePower = v end})
 
 -- Flight
 MainTab:CreateSection("Flight")
