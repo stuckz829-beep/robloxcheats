@@ -73,36 +73,38 @@ RunService.Stepped:Connect(function()
         return false
     end
 
-    if currentBall and isMagEnabled and not isHeldByOthers() then
-        local dist = (hrp.Position - currentBall.Position).Magnitude
-        if dist <= magRange then
-            local catchPoint = hrp.Position + (hrp.CFrame.LookVector * 1.5)
-            if dist > 2.5 then
-                currentBall.CFrame = currentBall.CFrame:Lerp(CFrame.new(catchPoint), 0.3)
-                currentBall.AssemblyLinearVelocity = (catchPoint - currentBall.Position).Unit * 150
-            else
-                currentBall.CFrame = CFrame.new(catchPoint)
-                currentBall.AssemblyLinearVelocity = Vector3.new(0,0,0)
-            end
-        end
+if currentBall and isMagEnabled and not isHeldByOthers() then
+    local dist = (hrp.Position - currentBall.Position).Magnitude
+    local catchPoint = hrp.Position + (hrp.CFrame.LookVector * 1.5)
 
-        -- Sphere visualization
-        if not visualSphere then
-            visualSphere = Instance.new("Part")
-            visualSphere.Shape = Enum.PartType.Ball
-            visualSphere.Color = Color3.fromRGB(0, 255, 150)
-            visualSphere.Material = Enum.Material.ForceField
-            visualSphere.Transparency = 0.5
-            visualSphere.Anchored = true
-            visualSphere.CanCollide = false
-            visualSphere.Parent = workspace
-        end
-        visualSphere.Size = Vector3.new(magRange*2, magRange*2, magRange*2)
-        visualSphere.Position = currentBall.Position
-    elseif visualSphere then
-        visualSphere:Destroy()
-        visualSphere = nil
+    if dist > 3 then
+        -- Smooth pull using velocity, avoids flinging
+        local direction = (catchPoint - currentBall.Position)
+        currentBall.AssemblyLinearVelocity = direction.Unit * math.clamp(direction.Magnitude * 10, 0, 150)
+    else
+        -- When very close, gently move ball without teleporting
+        currentBall.AssemblyLinearVelocity = Vector3.new(0,0,0)
+        currentBall.CFrame = currentBall.CFrame:Lerp(CFrame.new(catchPoint), 0.1)
     end
+
+    -- Sphere visualization
+    if not visualSphere then
+        visualSphere = Instance.new("Part")
+        visualSphere.Shape = Enum.PartType.Ball
+        visualSphere.Color = Color3.fromRGB(0, 255, 150)
+        visualSphere.Material = Enum.Material.ForceField
+        visualSphere.Transparency = 0.5
+        visualSphere.Anchored = true
+        visualSphere.CanCollide = false
+        visualSphere.Parent = workspace
+    end
+    visualSphere.Size = Vector3.new(magRange*2, magRange*2, magRange*2)
+    visualSphere.Position = currentBall.Position
+elseif visualSphere then
+    visualSphere:Destroy()
+    visualSphere = nil
+end
+
 
     -- HEAD MOD & BOUNCE
     if isHeadModEnabled then
