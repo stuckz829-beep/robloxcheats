@@ -44,7 +44,7 @@ RunService.Heartbeat:Connect(function()
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- Football Magnet Logic
+    -- 1. Football Magnet Logic
     if currentBall and isMagEnabled then
         if not visualSphere then
             visualSphere = Instance.new("Part")
@@ -68,16 +68,40 @@ RunService.Heartbeat:Connect(function()
         visualSphere = nil
     end
 
-    -- Head Collision Logic
+    -- 2. Integrated Persistent Head Collision Logic
     if isHeadModEnabled then
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= localPlayer and player.Character then
                 local head = player.Character:FindFirstChild("Head")
-                local hum = player.Character:FindFirstChildOfClass("Humanoid")
-                if head and hum then
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                
+                if head and humanoid then
+                    -- Visual Scaling
                     head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
                     head.Transparency = 0.5
-                    head.CanCollide = true
+                    
+                    -- Collision Logic: Check if WE are standing on THEIR head
+                    local isStandingOnHead = false
+                    local rayParam = RaycastParams.new()
+                    rayParam.FilterDescendantsInstances = {localPlayer.Character}
+                    rayParam.FilterType = Enum.RaycastFilterType.Exclude
+                    
+                    -- Raycast down 5 studs from our HumanoidRootPart
+                    local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
+                    if ray and ray.Instance == head then
+                        isStandingOnHead = true
+                    end
+
+                    -- Jump Logic + Persistent Stand Logic
+                    local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
+                    local timeSinceJump = tick() - lastJump
+
+                    -- If standing on head OR in the specific jump timing window, enable collision
+                    if isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30) then
+                        head.CanCollide = true
+                    else
+                        head.CanCollide = false
+                    end
                 end
             end
         end
@@ -97,4 +121,4 @@ MainTab:CreateSection("Server Visuals")
 MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
 MainTab:CreateSlider({Name = "Head Scale", Range = {1, 15}, Increment = 0.5, CurrentValue = 1, Callback = function(v) targetHeadScale = v end})
 
-Rayfield:Notify({Title = "Hub Loaded", Content = "2026 UI fix applied successfully.", Duration = 5})
+Rayfield:Notify({Title = "Hub Loaded", Content = "2026 UI & Persistent Head Logic applied.", Duration = 5})
