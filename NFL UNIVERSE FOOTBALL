@@ -9,7 +9,7 @@ if not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "Football Pro V13",
+   Name = "NFL UNIVERSE (BETA)",
    LoadingTitle = "NFL UNIVERSE FOOTBALL Hub",
    LoadingSubtitle = "by unknown",
    ConfigurationSaving = { Enabled = true, FolderName = "HeadConfigs", FileName = "Main" },
