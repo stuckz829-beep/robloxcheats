@@ -54,10 +54,10 @@ local MainTab = Window:CreateTab("Main Hub", 4483362458)
 
 MainTab:CreateSection("Football Magging")
 MainTab:CreateToggle({Name = "Enable Magging", CurrentValue = false, Flag = "MagToggle", Callback = function(Value) MaggingEnabled = Value end})
-MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 1, Suffix = " Studs", CurrentValue = 1, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
+MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 1, Suffix = " Speed", CurrentValue = 1, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
 
 MainTab:CreateSection("Personal Physics")
-MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 150}, Increment = 1, CurrentValue = 18, Flag = "Speed", Callback = function(Value)
+MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 150}, Increment = 1, Suffix = " WalkSpeed", CurrentValue = 18, Flag = "Speed", Callback = function(Value)
       if Character and Character:FindFirstChild("Humanoid") then Character.Humanoid.WalkSpeed = Value end
 end})
 MainTab:CreateSlider({Name = "Player Gravity", Range = {30, 196.2}, Increment = 1, Suffix = " Gravity", CurrentValue = 196.2, Flag = "PlayerGravity", Callback = function(Value) TargetGravity = Value end})
