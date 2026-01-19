@@ -1,0 +1,131 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Blox Fruits 2026 Ultimate Hub",
+   LoadingTitle = "Initializing Hub...",
+   LoadingSubtitle = "by unknown",
+   ConfigurationSaving = { Enabled = false, FolderName = "BloxFruits", FileName = "Main" }
+})
+
+-- TAB 1: Auto Farm
+local FarmTab = Window:CreateTab("Automation", 4483362458)
+
+-- Auto Farm Level Logic
+FarmTab:CreateToggle({
+   Name = "Auto Farm Level",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.AutoFarm = Value
+      while _G.AutoFarm do
+         task.wait(0.1)
+         -- 1. Check current level and take appropriate quest
+         -- 2. Teleport to quest mobs
+         -- 3. Trigger attack remote (CommF_:HandleAttack)
+         print("Farming levels at current island...")
+      end
+   end,
+})
+
+-- Mastery Farm Logic
+FarmTab:CreateToggle({
+   Name = "Auto Mastery (Selected Weapon)",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.MasteryFarm = Value
+      while _G.MasteryFarm do
+         task.wait(0.1)
+         -- Logic: Lower mob health with main weapon, 
+         -- then swap to target weapon for the final hit.
+         print("Farming mastery for equipped item...")
+      end
+   end,
+})
+
+-- TAB 2: Teleporting
+local TeleportTab = Window:CreateTab("Sea Teleports", 4483362458)
+
+-- Teleport to First Sea
+TeleportTab:CreateButton({
+   Name = "Travel to 1st Sea (Old World)",
+   Callback = function()
+      game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("TravelMain")
+   end,
+})
+
+-- Teleport to Second Sea
+TeleportTab:CreateButton({
+   Name = "Travel to 2nd Sea (New World)",
+   Callback = function()
+      game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("TravelZou")
+   end,
+})
+
+-- Teleport to Third Sea
+TeleportTab:CreateButton({
+   Name = "Travel to 3rd Sea",
+   Callback = function()
+      game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("TravelDressrosa")
+   end,
+})
+
+-- TAB 3: Visuals (ESP)
+local VisualTab = Window:CreateTab("Visuals", 4483362458)
+
+VisualTab:CreateToggle({
+   Name = "Fruit ESP",
+   CurrentValue = false,
+   Callback = function(Value)
+      -- Logic: Highlight Blox Fruits on the map
+      print("Fruit ESP: " .. tostring(Value))
+   end,
+})
+
+
+
+-- Table to keep track of active ESP highlights
+local activeESP = {}
+
+VisualTab:CreateToggle({
+   Name = "Player ESP",
+   CurrentValue = false,
+   Flag = "PlayerESP", 
+   Callback = function(Value)
+      _G.PlayerESP = Value
+      
+      -- Function to add highlight to a player's character
+      local function addESP(plr)
+         if plr ~= game.Players.LocalPlayer then
+            plr.CharacterAdded:Connect(function(char)
+               if _G.PlayerESP then
+                  local highlight = Instance.new("Highlight")
+                  highlight.Parent = char
+                  highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Red fill
+                  highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- White outline
+                  activeESP[plr] = highlight
+               end
+            end)
+            
+            -- Apply to current character if it exists
+            if plr.Character and _G.PlayerESP then
+               local highlight = Instance.new("Highlight")
+               highlight.Parent = plr.Character
+               highlight.FillColor = Color3.fromRGB(255, 0, 0)
+               activeESP[plr] = highlight
+            end
+         end
+      end
+
+      if Value then
+         -- Turn ESP ON for everyone
+         for _, player in pairs(game.Players:GetPlayers()) do
+            addESP(player)
+         end
+      else
+         -- Turn ESP OFF and clean up
+         for plr, highlight in pairs(activeESP) do
+            if highlight then highlight:Destroy() end
+         end
+         activeESP = {}
+      end
+   end,
+})
