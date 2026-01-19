@@ -1,152 +1,126 @@
--- SECURE MODE: Essential for Rayfield to load in 2026 without crashing
-getgenv().SecureMode = true 
-
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
-if not Rayfield then 
-    warn("RAYFIELD FAILED TO LOAD: Try re-executing or check your executor.")
-    return 
-end
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu'))()
+local UIS = game:GetService("UserInputService")
 
 local Window = Rayfield:CreateWindow({
-   Name = "NFL UNIVERSE (BETA)",
-   LoadingTitle = "NFL UNIVERSE FOOTBALL Hub",
-   LoadingSubtitle = "by unknown",
-   ConfigurationSaving = { Enabled = true, FolderName = "HeadConfigs", FileName = "Main" },
-   KeySystem = false,
+   Name = "Elite Football Hub 2026",
+   LoadingTitle = "Initializing Hub...",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
 })
 
--- Logic Variables
-local MaggingEnabled = false
-local MagPower = 1 
-local HeadHopEnabled = false
-local BounceHeight = 1
-local BounceCooldown = 2 -- UPDATED: Cooldown set to 2 seconds
-local LastBounce = 0.2
-local ExpandEnabled = false
-local HeadSize = 1
-local TargetGravity = 196.2 
-local DefaultGravity = 196.2
-local MagVisual = nil
+-- State Variables
+local localPlayer = game.Players.LocalPlayer
+local isHeadModEnabled = false
+local targetHeadScale = 1
+local isMagEnabled = false
+local magRange = 15
+local visualSphere = nil
+local isMouseDown = false
 
--- Performance Optimization: Cache Variables
-local lp = game.Players.LocalPlayer
-local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Character = lp.Character or lp.CharacterAdded:Wait()
-local Root = Character:WaitForChild("HumanoidRootPart")
-local TotalMass = 0
+-- --- TABS ---
+local PlayerTab = Window:CreateTab("Player Mods", 4483362458)
+local ServerTab = Window:CreateTab("Server Visuals", 4483362458)
+local FootballTab = Window:CreateTab("Football Mag", 4483362458)
 
--- Function to update mass (only runs when character changes, saving FPS)
-local function UpdateMass()
-    Character = lp.Character
-    if not Character then return end
-    Root = Character:FindFirstChild("HumanoidRootPart")
-    TotalMass = 0
-    for _, part in pairs(Character:GetChildren()) do 
-        if part:IsA("BasePart") then TotalMass = TotalMass + part:GetMass() end 
-    end
-end
-lp.CharacterAdded:Connect(UpdateMass)
-UpdateMass()
-
-local MainTab = Window:CreateTab("Main Hub", 112952645005929) 
-
-MainTab:CreateSection("Football Magging")
-MainTab:CreateToggle({Name = "Enable Magging", CurrentValue = false, Flag = "MagToggle", Callback = function(Value) MaggingEnabled = Value end})
-MainTab:CreateSlider({Name = "Magging Pull Range", Range = {1, 100}, Increment = 0.5, Suffix = " Speed", CurrentValue = 8, Flag = "MagSlider", Callback = function(Value) MagPower = Value end})
-
-MainTab:CreateSection("Personal Physics")
-MainTab:CreateSlider({Name = "WalkSpeed", Range = {18, 150}, Increment = 1, Suffix = " WalkSpeed", CurrentValue = 18, Flag = "Speed", Callback = function(Value)
-      if Character and Character:FindFirstChild("Humanoid") then Character.Humanoid.WalkSpeed = Value end
-end})
-MainTab:CreateSlider({Name = "Player Gravity", Range = {30, 196.2}, Increment = 0.2, Suffix = " Gravity", CurrentValue = 196.2, Flag = "PlayerGravity", Callback = function(Value) TargetGravity = Value end})
-
-MainTab:CreateSection("Head Bounce Settings")
-MainTab:CreateToggle({Name = "Enable Boost Tech", CurrentValue = false, Flag = "HopToggle", Callback = function(Value) HeadHopEnabled = Value end})
-MainTab:CreateSlider({Name = "Boost Height", Range = {1, 300}, Increment = 1, Suffix = " Studs", CurrentValue = 41, Flag = "HeightSlider", Callback = function(Value) BounceHeight = Value end})
-
-MainTab:CreateSection("Head Expander (Others)")
-MainTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Flag = "ExpandToggle", Callback = function(Value) ExpandEnabled = Value end})
-MainTab:CreateSlider({Name = "Head Size", Range = {1, 20}, Increment = 0.5, Suffix = " Studs", CurrentValue = 3.5, Flag = "SizeSlider", Callback = function(Value) HeadSize = Value end})
-
--- Logic Helpers
-local function findFootballInWorkspace()
-    for _, v in pairs(workspace:GetChildren()) do -- Optimized search (Top-level only is faster)
-        if v.Name == "Football" and v:IsA("BasePart") then return v end
-    end
-    return workspace:FindFirstChild("Football", true) -- Fallback to deep search
-end
-
-local function checkInventoryForFootball()
-    return (Character and Character:FindFirstChild("Football")) or lp.Backpack:FindFirstChild("Football")
-end
-
--- MAIN ENGINE: Optimized Loop
-RunService.RenderStepped:Connect(function()
-    if not Character or not Root then return end
-    local now = tick()
-
-    -- Optimized Gravity
-    local forceObj = Root:FindFirstChild("GravityForce")
-    if not forceObj then
-        forceObj = Instance.new("VectorForce")
-        forceObj.Name = "GravityForce"
-        local att = Instance.new("Attachment", Root)
-        att.Name = "GravityAttachment"
-        forceObj.Attachment0 = att
-        forceObj.RelativeTo = Enum.ActuatorRelativeTo.World
-        forceObj.Parent = Root
-    end
-    forceObj.Force = Vector3.new(0, TotalMass * (DefaultGravity - TargetGravity), 0)
-
-    -- UPDATED: Precise Straight-Line Magging
-    local ball = findFootballInWorkspace()
-    if MaggingEnabled and ball then
-        if not MagVisual then
-            MagVisual = Instance.new("Part")
-            MagVisual.Shape, MagVisual.Color, MagVisual.Transparency = Enum.PartType.Ball, Color3.fromRGB(255,0,0), 0.65
-            MagVisual.CanCollide, MagVisual.Anchored, MagVisual.Material, MagVisual.CastShadow = false, true, Enum.Material.ForceField, false
-            MagVisual.Parent = workspace
-        end
-        MagVisual.Position, MagVisual.Size = ball.Position, Vector3.new(MagPower * 2, MagPower * 2, MagPower * 2)
-        
-        if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-            -- Calculate precise direction vector
-            local direction = (ball.Position - Root.Position).Unit
-            -- Apply velocity directly toward the ball without adding to current momentum (prevents drifting)
-            local pullSpeed = math.clamp(MagPower * 2.5, 20, 150)
-            Root.AssemblyLinearVelocity = direction * pullSpeed
-        end
-    elseif MagVisual then 
-        MagVisual:Destroy() 
-        MagVisual = nil 
-    end
-
-    -- Optimized Head Expander
-    if ExpandEnabled then
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= lp and player.Character then
-                local head = player.Character:FindFirstChild("Head")
-                if head then
-                    head.Size = Vector3.new(HeadSize, HeadSize, HeadSize)
-                    head.Transparency = 0.5 
-                    head.CanCollide = false
-                end
-            end
-        end
-    end
-
-    -- Optimized Head Bounce
-    if HeadHopEnabled and not checkInventoryForFootball() and (now - LastBounce >= BounceCooldown) then
-        local rayParams = RaycastParams.new()
-        rayParams.FilterDescendantsInstances = {Character}
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        
-        local ray = workspace:Raycast(Root.Position, Vector3.new(0, -6, 0), rayParams)
-        if ray and ray.Instance and ray.Instance.Name == "Head" then
-            LastBounce = now
-            Root.AssemblyLinearVelocity = Vector3.new(Root.AssemblyLinearVelocity.X, BounceHeight, Root.AssemblyLinearVelocity.Z)
-        end
+-- --- INPUT DETECTION ---
+UIS.InputBegan:Connect(function(input, processed)
+    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isMouseDown = true
     end
 end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isMouseDown = false
+    end
+end)
+
+-- --- CORE LOGIC ---
+
+-- Head Logic
+local function updatePlayerHead(player)
+    if player ~= localPlayer then
+        local character = player.Character or player.CharacterAdded:Wait()
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        local head = character:WaitForChild("Head", 5)
+        if humanoid and head then
+            local headScale = humanoid:FindFirstChild("HeadScale")
+            if headScale then headScale.Value = isHeadModEnabled and targetHeadScale or 1 end
+            head.Transparency = isHeadModEnabled and 0.5 or 0
+            for _, d in pairs(head:GetChildren()) do if d:IsA("Decal") then d.Transparency = head.Transparency end end
+        end
+    end
+end
+
+-- Mag Logic (Triggered by Range + Mouse Click)
+game:GetService("RunService").RenderStepped:Connect(function()
+    local ball = workspace:FindFirstChild("Football") or workspace:FindFirstChild("Ball")
+    local hrp = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+    -- Check all conditions: Toggle ON, Ball Exists, Mouse Held, and Player in Range
+    if isMagEnabled and ball and hrp and isMouseDown then
+        local distance = (hrp.Position - ball.Position).Magnitude
+        
+        if distance <= magRange then
+            -- Create/Update Visual Sphere
+            if not visualSphere then
+                visualSphere = Instance.new("Part")
+                visualSphere.Shape = Enum.PartType.Ball
+                visualSphere.Color = Color3.fromRGB(255, 0, 0)
+                visualSphere.Transparency = 0.5
+                visualSphere.Material = Enum.Material.ForceField
+                visualSphere.CanCollide = false
+                visualSphere.Anchored = true
+                visualSphere.Parent = workspace
+            end
+            visualSphere.Size = Vector3.new(magRange * 2, magRange * 2, magRange * 2)
+            visualSphere.Position = ball.Position
+            
+            -- Pull Ball to Player
+            ball.Velocity = (hrp.Position - ball.Position).Unit * 75
+        else
+            -- Cleanup if out of range
+            if visualSphere then visualSphere:Destroy() visualSphere = nil end
+        end
+    else
+        -- Cleanup if mouse released or toggle off
+        if visualSphere then visualSphere:Destroy() visualSphere = nil end
+    end
+end)
+
+-- --- UI SETUP ---
+
+-- Player Tab
+PlayerTab:CreateSection("Self Movement")
+PlayerTab:CreateSlider({
+   Name = "WalkSpeed", Range = {16, 300}, Increment = 1, CurrentValue = 16, Flag = "WS",
+   Callback = function(v) if localPlayer.Character:FindFirstChild("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = v end end
+})
+PlayerTab:CreateSlider({
+   Name = "Personal Gravity", Range = {0, 196}, Increment = 1, CurrentValue = 196, Flag = "GRV",
+   Callback = function(v) workspace.Gravity = v end
+})
+
+-- Server Tab
+ServerTab:CreateSection("Others")
+ServerTab:CreateToggle({
+   Name = "Enable Head Mods", CurrentValue = false, Flag = "HM",
+   Callback = function(v) isHeadModEnabled = v for _, p in ipairs(game.Players:GetPlayers()) do updatePlayerHead(p) end end
+})
+ServerTab:CreateSlider({
+   Name = "Head Size", Range = {1, 10}, Increment = 0.5, CurrentValue = 1, Flag = "HS",
+   Callback = function(v) targetHeadScale = v end
+})
+
+-- Football Tab
+FootballTab:CreateSection("Click-to-Mag")
+FootballTab:CreateToggle({
+   Name = "Enable Magnet", CurrentValue = false, Flag = "MG",
+   Callback = function(v) isMagEnabled = v end
+})
+FootballTab:CreateSlider({
+   Name = "Mag/Sphere Range", Range = {5, 60}, Increment = 1, CurrentValue = 15, Flag = "MR",
+   Callback = function(v) magRange = v end
+})
+
+Rayfield:Notify({Title = "Script Ready", Content = "Hold Left Click in range to Mag.", Duration = 5})
