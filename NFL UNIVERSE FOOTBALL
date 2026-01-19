@@ -38,29 +38,42 @@ UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then isMouseDown = false end 
 end)
 
--- CORE LOGIC LOOP
+-- CORE LOGIC LOOP (2026 Force-Pull Edition)
 RunService.Heartbeat:Connect(function()
     local char = localPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- 1. Football Magnet Logic
+    -- 1. Physics-Bypass Football Magnet
     if currentBall and isMagEnabled then
+        -- Sphere Visualization
         if not visualSphere then
             visualSphere = Instance.new("Part")
-            visualSphere.Shape, visualSphere.Color = Enum.PartType.Ball, Color3.fromRGB(255, 0, 0)
-            visualSphere.Transparency, visualSphere.Material = 0.6, Enum.Material.ForceField
+            visualSphere.Shape, visualSphere.Color = Enum.PartType.Ball, Color3.fromRGB(0, 255, 150)
+            visualSphere.Transparency, visualSphere.Material = 0.7, Enum.Material.ForceField
             visualSphere.CanCollide, visualSphere.Anchored, visualSphere.CastShadow = false, true, false
             visualSphere.Parent = workspace
         end
-        visualSphere.Size = Vector3.new(magRange * 0.8, magRange * 0.8, magRange * 0.8)
+        visualSphere.Size = Vector3.new(magRange * 2, magRange * 2, magRange * 2)
         visualSphere.Position = currentBall.Position
 
         if isMouseDown then 
             local dist = (hrp.Position - currentBall.Position).Magnitude
             if dist <= magRange then
-                local direction = (hrp.Position - currentBall.Position).Unit
-                currentBall.AssemblyLinearVelocity = (direction * 110) + Vector3.new(0, 2, 0)
+                -- The "Catch" point: 1.5 studs in front of your character
+                local catchPoint = hrp.Position + (hrp.CFrame.LookVector * 1.5)
+                
+                -- FORCE PULL: Directly setting CFrame and Velocity to bypass server lag
+                if dist > 2.5 then
+                    -- Smooth travel toward you
+                    local lerpFactor = 0.25 -- Speed of the pull (0.1 to 0.5)
+                    currentBall.CFrame = currentBall.CFrame:Lerp(CFrame.new(catchPoint), lerpFactor)
+                    currentBall.AssemblyLinearVelocity = (catchPoint - currentBall.Position).Unit * 120
+                else
+                    -- CATCH: Lock ball to hands
+                    currentBall.CFrame = CFrame.new(catchPoint)
+                    currentBall.AssemblyLinearVelocity = Vector3.new(0,0,0)
+                end
             end
         end
     elseif visualSphere then
@@ -76,27 +89,22 @@ RunService.Heartbeat:Connect(function()
                 local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
                 
                 if head and humanoid then
-                    -- Visual Scaling
                     head.Size = Vector3.new(targetHeadScale, targetHeadScale, targetHeadScale)
                     head.Transparency = 0.5
                     
-                    -- Collision Logic: Check if WE are standing on THEIR head
                     local isStandingOnHead = false
                     local rayParam = RaycastParams.new()
                     rayParam.FilterDescendantsInstances = {localPlayer.Character}
                     rayParam.FilterType = Enum.RaycastFilterType.Exclude
                     
-                    -- Raycast down 5 studs from our HumanoidRootPart
                     local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
                     if ray and ray.Instance == head then
                         isStandingOnHead = true
                     end
 
-                    -- Jump Logic + Persistent Stand Logic
                     local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
                     local timeSinceJump = tick() - lastJump
 
-                    -- If standing on head OR in the specific jump timing window, enable collision
                     if isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30) then
                         head.CanCollide = true
                     else
@@ -107,6 +115,8 @@ RunService.Heartbeat:Connect(function()
         end
     end
 end)
+
+
 
 -- UI Setup
 MainTab:CreateSection("Player")
