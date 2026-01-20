@@ -97,7 +97,7 @@ RunService.Stepped:Connect(function(_, delta)
         end
     end
 
--- 2. Integrated Persistent Head Collision Logic
+-- HEAD COLLISION LOGIC (XZ + Boost + No climbing)
 if isHeadModEnabled then
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer and player.Character then
@@ -118,38 +118,41 @@ if isHeadModEnabled then
                 head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
                 head.Transparency = 0.5
 
-                -- BOOST TECH
-                if isBounceEnabled then
-                    local dist = (hrp.Position - head.Position).Magnitude
-                    local verticalVel = hrp.AssemblyLinearVelocity.Y
-                    local now = tick()
-                    local last = headBounceCooldowns[player] or 0
+                -- BOOST TECH: instant boost on head touch
+if isBounceEnabled then
+    local dist = (hrp.Position - head.Position).Magnitude
+    local verticalVel = hrp.AssemblyLinearVelocity.Y
+    local now = tick()
+    local last = headBounceCooldowns[player] or 0
 
-                    if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) and not isTouchingHead[player] then
-                        isTouchingHead[player] = true
-                        headBounceCooldowns[player] = now
+    -- Trigger boost immediately when touching head, if cooldown passed
+    if dist <= 5 and verticalVel <= 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) and not isTouchingHead[player] then
+        isTouchingHead[player] = true
+        headBounceCooldowns[player] = now
 
-                        task.spawn(function()
-                            task.wait(0.15)
-                            if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
-                                hrp.AssemblyLinearVelocity = Vector3.new(
-                                    hrp.AssemblyLinearVelocity.X,
-                                    bouncePower,
-                                    hrp.AssemblyLinearVelocity.Z
-                                )
-                            end
-                            isTouchingHead[player] = false
-                        end)
-                    end
-                end
+        -- Instant boost
+        hrp.AssemblyLinearVelocity = Vector3.new(
+            hrp.AssemblyLinearVelocity.X,
+            bouncePower,
+            hrp.AssemblyLinearVelocity.Z
+        )
 
-                -- PERSISTENT COLLISION USING RAYCAST + JUMP TIMER
+        -- Reset touching flag after a short delay to prevent multiple boosts in one frame
+        task.spawn(function()
+            task.wait(0.05)
+            isTouchingHead[player] = false
+        end)
+    end
+end
+
+
+                -- PERSISTENT COLLISION USING RAYCAST + FALL CHECK
                 local isStandingOnHead = false
                 local rayParam = RaycastParams.new()
                 rayParam.FilterDescendantsInstances = {char}
                 rayParam.FilterType = Enum.RaycastFilterType.Exclude
 
-                -- Cast a ray straight down from your HRP to check if standing on this player's head
+                -- Cast a ray straight down from your HRP to check if falling onto this head
                 local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
                 if ray and ray.Instance == head then
                     isStandingOnHead = true
@@ -157,25 +160,15 @@ if isHeadModEnabled then
 
                 local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
                 local timeSinceJump = tick() - lastJump
+                local verticalVel = hrp.AssemblyLinearVelocity.Y
 
-                -- Always update CanCollide per player
-                head.CanCollide = (isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30))
-            end
-        end
-    end
-elseif not isHeadModEnabled then
-    -- Reset all other players' heads when toggle is off
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            if head and head:FindFirstChild("OriginalY") then
-                head.Size = Vector3.new(1, head.OriginalY.Value, 1)
-                head.Transparency = 0
-                head.CanCollide = true
+                -- Only allow head collision if falling or just jumped
+                head.CanCollide = (isStandingOnHead and verticalVel <= 0) or (timeSinceJump > 0.15 and timeSinceJump < 0.30)
             end
         end
     end
 end
+
 
 
     -- SMOOTH FLIGHT
