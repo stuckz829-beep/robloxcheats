@@ -97,20 +97,15 @@ RunService.Stepped:Connect(function(_, delta)
         end
     end
 
--- HEAD MOD + BOOST TECH (XZ Only, Efficient)
+-- 2. Integrated Persistent Head Collision Logic
 if isHeadModEnabled then
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer and player.Character then
             local head = player.Character:FindFirstChild("Head")
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             local char2 = player.Character
-            if head and char2 then
-                local holdingBall = currentBall and currentBall.Parent == char2
-                if holdingBall then
-                    head.CanCollide = false
-                    isTouchingHead[player] = false
-                    continue
-                end
 
+            if head and humanoid and char2 then
                 -- Store original Y size once
                 if not head:FindFirstChild("OriginalY") then
                     local v = Instance.new("NumberValue")
@@ -119,24 +114,21 @@ if isHeadModEnabled then
                     v.Parent = head
                 end
 
-                -- Expand head in XZ
+                -- Expand head in XZ (keep original Y)
                 head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
                 head.Transparency = 0.5
-                head.CanCollide = true
 
-                -- Only check bounce if enabled
+                -- BOOST TECH
                 if isBounceEnabled then
-                    local now = tick()
-                    local last = headBounceCooldowns[player] or 0
                     local dist = (hrp.Position - head.Position).Magnitude
                     local verticalVel = hrp.AssemblyLinearVelocity.Y
+                    local now = tick()
+                    local last = headBounceCooldowns[player] or 0
 
-                    -- Conditions to trigger bounce
                     if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) and not isTouchingHead[player] then
                         isTouchingHead[player] = true
                         headBounceCooldowns[player] = now
 
-                        -- Wait 0.15s, then confirm still close enough
                         task.spawn(function()
                             task.wait(0.15)
                             if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
@@ -150,13 +142,31 @@ if isHeadModEnabled then
                         end)
                     end
                 end
+
+                -- PERSISTENT COLLISION USING RAYCAST + JUMP TIMER
+                local isStandingOnHead = false
+                local rayParam = RaycastParams.new()
+                rayParam.FilterDescendantsInstances = {char}
+                rayParam.FilterType = Enum.RaycastFilterType.Exclude
+
+                -- Cast a ray straight down from your HRP to check if standing on this player's head
+                local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
+                if ray and ray.Instance == head then
+                    isStandingOnHead = true
+                end
+
+                local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
+                local timeSinceJump = tick() - lastJump
+
+                -- Always update CanCollide per player
+                head.CanCollide = (isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30))
             end
         end
     end
 elseif not isHeadModEnabled then
-    -- Reset heads when toggle is off
+    -- Reset all other players' heads when toggle is off
     for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character then
+        if player ~= localPlayer and player.Character then
             local head = player.Character:FindFirstChild("Head")
             if head and head:FindFirstChild("OriginalY") then
                 head.Size = Vector3.new(1, head.OriginalY.Value, 1)
@@ -166,7 +176,6 @@ elseif not isHeadModEnabled then
         end
     end
 end
-
 
 
     -- SMOOTH FLIGHT
@@ -348,6 +357,7 @@ FlightTab:CreateSlider({
 
 -- Auto Rusher GUI
 RusherTab:CreateSection("Auto Rusher")
+
 RusherTab:CreateToggle({
     Name = "Enable Auto Rusher",
     CurrentValue = false,
@@ -364,32 +374,74 @@ RusherTab:CreateToggle({
             end
             -- Reset WalkSpeed
             hum.WalkSpeed = defaultWalkSpeed
+            rusherHolding = false
         end
     end
 })
 
-RusherTab:CreateKeybind({
-    Name = "Auto Rusher Keybind",
-    CurrentKeybind = autoRusherKey,
-    HoldToInteract = true,
-    Flag = "AutoRusherKey",
-    Callback = function(newKey)
-        if string.match(newKey.Name, "^[A-Z]$") then
-            autoRusherKey = newKey
-            Rayfield:Notify({
-                Title = "Auto Rusher Keybind",
-                Content = "Keybind changed to: " .. newKey.Name,
-                Duration = 3
-            })
-        else
-            Rayfield:Notify({
-                Title = "Invalid Key",
-                Content = "Please choose a single letter key.",
-                Duration = 3
-            })
-        end
+-- Advanced Keybind Button
+local currentAutoRusherKey = autoRusherKey
+
+RusherTab:CreateButton({
+    Name = "Set Auto Rusher Key",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Auto Rusher",
+            Content = "Press any key to assign Auto Rusher...",
+            Duration = 3
+        })
+
+        local keyListener
+        keyListener = UIS.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                currentAutoRusherKey = input.KeyCode
+                autoRusherKey = input.KeyCode
+
+                Rayfield:Notify({
+                    Title = "Auto Rusher Keybind",
+                    Content = "Auto Rusher now uses: " .. input.KeyCode.Name,
+                    Duration = 3
+                })
+
+                keyListener:Disconnect()
+            end
+        end)
     end
 })
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == currentAutoRusherKey then
+        rusherHolding = true
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == currentAutoRusherKey then
+        rusherHolding = false
+    end
+end)
+
+
+-- AUTO RUSHER CORE
+if isAutoRusherEnabled and rusherHolding and currentBall and currentBall.Parent then
+    -- Check if the ball parent has a humanoid (player holding the ball)
+    local ballParent = currentBall.Parent
+    local ballOwnerHum = ballParent:FindFirstChildOfClass("Humanoid")
+    
+    if ballOwnerHum and ballParent ~= char then
+        local targetHRP = ballParent:FindFirstChild("HumanoidRootPart")
+        if targetHRP then
+            -- Compute direction and move
+            local dir = (targetHRP.Position - hrp.Position)
+            if dir.Magnitude > 0.1 then
+                hum:Move(dir.Unit, false)
+            end
+        end
+    end
+end
+
 
 Rayfield:Notify({
     Title = "2026 Stable Loaded",
