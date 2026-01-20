@@ -68,6 +68,96 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
+-- HEAD COLLISION MANAGER (Integrated with Ball)
+task.spawn(function()
+    while task.wait(0.1) do
+        local anyoneHasBall = false
+        -- Check if the ball is being held by someone
+        if currentBall and currentBall.Parent then
+            local parentHum = currentBall.Parent:FindFirstChildOfClass("Humanoid")
+            if parentHum then
+                anyoneHasBall = true
+            end
+        end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                if head and humanoid and hrp then
+                    -- Store original Y size once
+                    if not head:FindFirstChild("OriginalY") then
+                        local v = Instance.new("NumberValue")
+                        v.Name = "OriginalY"
+                        v.Value = head.Size.Y
+                        v.Parent = head
+                    end
+
+                    -- Only scale other players' heads, not the ball holder's head
+                    if player ~= localPlayer then
+                        -- Head Mod scaling for other players
+                        if isHeadModEnabled then
+                            head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
+                            head.Transparency = 0.5
+                        end
+                    else
+                        -- Your head should not expand when you're the ball holder
+                        head.Size = Vector3.new(1, head.OriginalY.Value, 1)
+                        head.Transparency = 0
+                    end
+
+                    -- If the ball is in the workspace (not held by anyone), apply regular head collision
+                    if not anyoneHasBall then
+                        -- Regular collision based on jump state
+                        local isStandingOnHead = false
+                        local rayParam = RaycastParams.new()
+                        rayParam.FilterDescendantsInstances = {player.Character}
+                        rayParam.FilterType = Enum.RaycastFilterType.Exclude
+
+                        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
+                        if ray and ray.Instance == head then
+                            isStandingOnHead = true
+                        end
+
+                        local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
+                        local timeSinceJump = tick() - lastJump
+
+                        -- Regular head collision only if standing on head or within jump cooldown window
+                        head.CanCollide = isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30)
+
+                        -- Enable Boost Tech logic (bounce off heads) when ball is in workspace
+                        if isBounceEnabled and dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
+                            -- You can bounce off their enlarged heads
+                            head.CanCollide = true
+                            -- Implement Boost Tech behavior to make you bounce off the heads
+                            -- Check distance to head and apply bouncing effect
+                            if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
+                                headBounceCooldowns[player] = now
+                                task.spawn(function()
+                                    task.wait(0.15)
+                                    if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
+                                        hrp.AssemblyLinearVelocity = Vector3.new(
+                                            hrp.AssemblyLinearVelocity.X,
+                                            bouncePower,
+                                            hrp.AssemblyLinearVelocity.Z
+                                        )
+                                    end
+                                end)
+                            end
+                        end
+                    else
+                        -- When someone is holding the ball, disable head collision
+                        head.CanCollide = false
+                    end
+                end
+            end
+        end
+    end
+end)
+
+
+
 -- CORE LOOP
 RunService.Stepped:Connect(function(_, delta)
     local char = localPlayer.Character
@@ -97,101 +187,34 @@ RunService.Stepped:Connect(function(_, delta)
         end
     end
 
--- 2. Integrated Persistent Head Collision Logic
-if isHeadModEnabled then
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            local char2 = player.Character
+    -- BOOST TECH
+    if isHeadModEnabled and isBounceEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer and player.Character then
+                local head = player.Character:FindFirstChild("Head")
+                if head and head.CanCollide then
+                    local dist = (hrp.Position - head.Position).Magnitude
+                    local verticalVel = hrp.AssemblyLinearVelocity.Y
+                    local now = tick()
+                    local last = headBounceCooldowns[player] or 0
 
-            if head and humanoid and char2 then
-                -- Store original Y size once
-                if not head:FindFirstChild("OriginalY") then
-                    local v = Instance.new("NumberValue")
-                    v.Name = "OriginalY"
-                    v.Value = head.Size.Y
-                    v.Parent = head
+                    if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
+                        headBounceCooldowns[player] = now
+                        task.spawn(function()
+                            task.wait(0.15)
+                            if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
+                                hrp.AssemblyLinearVelocity = Vector3.new(
+                                    hrp.AssemblyLinearVelocity.X,
+                                    bouncePower,
+                                    hrp.AssemblyLinearVelocity.Z
+                                )
+                            end
+                        end)
+                    end
                 end
-
-                -- Expand head in XZ (keep original Y)
-                head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
-                head.Transparency = 0.5
-
-                -- BOOST TECH
-if isBounceEnabled then
-    -- Check if anyone has the ball
-    local someoneHasBall = false
-    if currentBall and currentBall.Parent then
-        local parentHum = currentBall.Parent:FindFirstChildOfClass("Humanoid")
-        if parentHum then
-            someoneHasBall = true
-        end
-    end
-
-    if not someoneHasBall then
-        local dist = (hrp.Position - head.Position).Magnitude
-        local verticalVel = hrp.AssemblyLinearVelocity.Y
-        local now = tick()
-        local last = headBounceCooldowns[player] or 0
-
-        if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) and not isTouchingHead[player] and head.CanCollide then
-            isTouchingHead[player] = true
-            headBounceCooldowns[player] = now
-
-            task.spawn(function()
-                task.wait(0.15)
-                if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
-                    hrp.AssemblyLinearVelocity = Vector3.new(
-                        hrp.AssemblyLinearVelocity.X,
-                        bouncePower,
-                        hrp.AssemblyLinearVelocity.Z
-                    )
-                end
-                isTouchingHead[player] = false
-            end)
-        end
-    end
-end
-
-
-
-
-                -- PERSISTENT COLLISION + NO CLIMB: CanCollide only true when not jumping above
-                local isStandingOnHead = false
-                local rayParam = RaycastParams.new()
-                rayParam.FilterDescendantsInstances = {char}
-                rayParam.FilterType = Enum.RaycastFilterType.Exclude
-
-                local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
-                if ray and ray.Instance == head then
-                    isStandingOnHead = true
-                end
-
-                local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
-                local timeSinceJump = tick() - lastJump
-
-                -- Can only collide if not jumping past the head (prevents climbing)
-                head.CanCollide = isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30)
             end
         end
     end
-elseif not isHeadModEnabled then
-    -- Reset all other players' heads when toggle is off
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            if head and head:FindFirstChild("OriginalY") then
-                head.Size = Vector3.new(1, head.OriginalY.Value, 1)
-                head.Transparency = 0
-                head.CanCollide = true
-            end
-        end
-    end
-end
-
-
-
 
     -- SMOOTH FLIGHT
     if isFlying then
@@ -227,14 +250,12 @@ end
             end
         end
     end
-end) -- this end was missing before
-
-
+end)
 
 -- GUI
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
-    LoadingTitle = "Direct Path Logic Applied...",
+    LoadingTitle = "NFL Universe Football Script Loading...",
     LoadingSubtitle = "by unknown",
     ConfigurationSaving = { Enabled = true },
     KeySystem = false
@@ -290,7 +311,7 @@ PhysicsTab:CreateToggle({
 -- Player Magnet
 MagnetTab:CreateSection("Click-to-Pull Ball")
 MagnetTab:CreateToggle({
-    Name = "Enable Pull",
+    Name = "Enable Pull Mag",
     CurrentValue = false,
     Callback = function(v) isMagEnabled = v end
 })
@@ -305,7 +326,7 @@ MagnetTab:CreateSlider({
 
 -- Head Mod & Boost
 HeadTab:CreateToggle({
-    Name = "Enable Head Mod",
+    Name = "Enable Head Size",
     CurrentValue = false,
     Callback = function(v)
         isHeadModEnabled = v
@@ -326,7 +347,7 @@ HeadTab:CreateToggle({
 })
 
 HeadTab:CreateSlider({
-    Name = "Head Width (XZ)",
+    Name = "Head Size",
     Range = {1, 15},
     Increment = 0.5,
     CurrentValue = 5,
@@ -372,7 +393,6 @@ FlightTab:CreateSlider({
 
 -- Auto Rusher GUI
 RusherTab:CreateSection("Auto Rusher")
-
 RusherTab:CreateToggle({
     Name = "Enable Auto Rusher",
     CurrentValue = false,
@@ -380,14 +400,12 @@ RusherTab:CreateToggle({
         isAutoRusherEnabled = v
         local hum = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
         if not v and hum then
-            -- Stop running animation
             for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
                 if track.Animation and track.Animation.Name == "AutoRusherAnim" then
                     track:Stop()
                     track.Animation:Destroy()
                 end
             end
-            -- Reset WalkSpeed
             hum.WalkSpeed = defaultWalkSpeed
             rusherHolding = false
         end
@@ -437,26 +455,6 @@ UIS.InputEnded:Connect(function(input)
         rusherHolding = false
     end
 end)
-
-
--- AUTO RUSHER CORE
-if isAutoRusherEnabled and rusherHolding and currentBall and currentBall.Parent then
-    -- Check if the ball parent has a humanoid (player holding the ball)
-    local ballParent = currentBall.Parent
-    local ballOwnerHum = ballParent:FindFirstChildOfClass("Humanoid")
-    
-    if ballOwnerHum and ballParent ~= char then
-        local targetHRP = ballParent:FindFirstChild("HumanoidRootPart")
-        if targetHRP then
-            -- Compute direction and move
-            local dir = (targetHRP.Position - hrp.Position)
-            if dir.Magnitude > 0.1 then
-                hum:Move(dir.Unit, false)
-            end
-        end
-    end
-end
-
 
 Rayfield:Notify({
     Title = "2026 Stable Loaded",
