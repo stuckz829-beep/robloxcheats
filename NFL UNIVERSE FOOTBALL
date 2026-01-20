@@ -19,8 +19,8 @@ local camera = workspace.CurrentCamera
 
 -- VARIABLES
 local isHeadModEnabled, targetHeadScale = false, 5
-local isBounceEnabled, bouncePower = false, 50
-local isMagEnabled, magRange = false, 0.5
+local isBounceEnabled, bouncePower = false, 30
+local isMagEnabled, magRange = false, 0.3
 local isNoclipEnabled = false
 local isFlying, flySpeed = false, 50
 local flyVelocity = Vector3.zero
@@ -72,14 +72,24 @@ end)
 task.spawn(function()
     while task.wait(0.1) do
         local anyoneHasBall = false
-        -- Check if the ball is being held by someone
-        if currentBall and currentBall.Parent then
-            local parentHum = currentBall.Parent:FindFirstChildOfClass("Humanoid")
-            if parentHum then
-                anyoneHasBall = true
+
+        -- Check for any "Football" tool or part anywhere in the workspace
+        local footballInWorkspace = workspace:FindFirstChild("Football") or workspace:FindFirstChild("Ball") or nil
+        
+        -- If the football is in the workspace, it's considered in play (not held by anyone)
+        if footballInWorkspace then
+            anyoneHasBall = false
+        else
+            -- Check if the ball is being held by a player (i.e., ball is parented to a humanoid)
+            if currentBall and currentBall.Parent then
+                local parentHum = currentBall.Parent:FindFirstChildOfClass("Humanoid")
+                if parentHum then
+                    anyoneHasBall = true
+                end
             end
         end
 
+        -- Loop through each player and handle head collision and scaling
         for _, player in ipairs(Players:GetPlayers()) do
             if player.Character then
                 local head = player.Character:FindFirstChild("Head")
@@ -108,47 +118,44 @@ task.spawn(function()
                     end
 
                     -- If the ball is in the workspace (not held by anyone), apply regular head collision
-                    if not anyoneHasBall then
-                        -- Regular collision based on jump state
-                        local isStandingOnHead = false
-                        local rayParam = RaycastParams.new()
-                        rayParam.FilterDescendantsInstances = {player.Character}
-                        rayParam.FilterType = Enum.RaycastFilterType.Exclude
-
-                        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
-                        if ray and ray.Instance == head then
-                            isStandingOnHead = true
-                        end
-
-                        local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
-                        local timeSinceJump = tick() - lastJump
-
-                        -- Regular head collision only if standing on head or within jump cooldown window
-                        head.CanCollide = isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30)
-
-                        -- Enable Boost Tech logic (bounce off heads) when ball is in workspace
-                        if isBounceEnabled and dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
-                            -- You can bounce off their enlarged heads
+                    if footballInWorkspace or not anyoneHasBall then
+                        -- Check if the player is in the air (not standing on the ground)
+                        local isJumping = humanoid:GetState() == Enum.HumanoidStateType.Jumping or humanoid:GetState() == Enum.HumanoidStateType.Freefall
+                        
+                        -- Enable head collision only if the player is in the air (not standing)
+                        if isJumping then
                             head.CanCollide = true
-                            -- Implement Boost Tech behavior to make you bounce off the heads
-                            -- Check distance to head and apply bouncing effect
-                            if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
-                                headBounceCooldowns[player] = now
-                                task.spawn(function()
-                                    task.wait(0.15)
-                                    if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
-                                        hrp.AssemblyLinearVelocity = Vector3.new(
-                                            hrp.AssemblyLinearVelocity.X,
-                                            bouncePower,
-                                            hrp.AssemblyLinearVelocity.Z
-                                        )
-                                    end
-                                end)
-                            end
+                        else
+                            head.CanCollide = false
                         end
                     else
-                        -- When someone is holding the ball, disable head collision
-                        head.CanCollide = false
+                        -- If someone has the ball, disable head collision for them
+                        if currentBall.Parent ~= player.Character then
+                            head.CanCollide = false
+                        end
+                    end
+
+                    -- Enable Boost Tech logic (bounce off heads) when ball is in workspace
+                    if isBounceEnabled then
+                        local dist = (hrp.Position - head.Position).Magnitude
+                        local verticalVel = hrp.AssemblyLinearVelocity.Y
+                        local now = tick()
+                        local last = headBounceCooldowns[player] or 0
+
+                        -- Implement Boost Tech behavior to make you bounce off the heads
+                        if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
+                            headBounceCooldowns[player] = now
+                            task.spawn(function()
+                                task.wait(0.15)
+                                if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
+                                    hrp.AssemblyLinearVelocity = Vector3.new(
+                                        hrp.AssemblyLinearVelocity.X,
+                                        bouncePower,
+                                        hrp.AssemblyLinearVelocity.Z
+                                    )
+                                end
+                            end)
+                        end
                     end
                 end
             end
@@ -188,20 +195,25 @@ RunService.Stepped:Connect(function(_, delta)
     end
 
     -- BOOST TECH
-    if isHeadModEnabled and isBounceEnabled then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= localPlayer and player.Character then
-                local head = player.Character:FindFirstChild("Head")
-                if head and head.CanCollide then
-                    local dist = (hrp.Position - head.Position).Magnitude
-                    local verticalVel = hrp.AssemblyLinearVelocity.Y
-                    local now = tick()
-                    local last = headBounceCooldowns[player] or 0
-
-                    if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
+if isHeadModEnabled and isBounceEnabled then
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if head and head.CanCollide then
+                local dist = (hrp.Position - head.Position).Magnitude
+                local verticalVel = hrp.AssemblyLinearVelocity.Y
+                local now = tick()
+                local last = headBounceCooldowns[player] or 0
+                
+                -- Add a check to ensure you are actually close enough to trigger the boost
+                if dist <= 5 and verticalVel < 0 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
+                    -- We ensure there is a valid collision before applying the boost
+                    if (hrp.Position - head.Position).Magnitude <= 5 then
                         headBounceCooldowns[player] = now
                         task.spawn(function()
                             task.wait(0.15)
+                            -- Ensure we are still within the proximity after waiting to trigger the boost
                             if head and hrp and (hrp.Position - head.Position).Magnitude <= 5 then
                                 hrp.AssemblyLinearVelocity = Vector3.new(
                                     hrp.AssemblyLinearVelocity.X,
@@ -215,6 +227,8 @@ RunService.Stepped:Connect(function(_, delta)
             end
         end
     end
+end
+
 
     -- SMOOTH FLIGHT
     if isFlying then
@@ -320,7 +334,7 @@ MagnetTab:CreateSlider({
     Name = "Pull Strength",
     Range = {0.1, 1},
     Increment = 0.05,
-    CurrentValue = 0.5,
+    CurrentValue = 0.3,
     Callback = function(v) magRange = v end
 })
 
@@ -363,8 +377,8 @@ HeadTab:CreateToggle({
 HeadTab:CreateSlider({
     Name = "Boost Power",
     Range = {30, 150},
-    Increment = 5,
-    CurrentValue = 50,
+    Increment = 1,
+    CurrentValue = 30,
     Callback = function(v) bouncePower = v end
 })
 
