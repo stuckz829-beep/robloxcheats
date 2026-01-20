@@ -105,7 +105,7 @@ task.spawn(function()
                     -- 2. Conditional Collision & Boost
                     -- ONLY allows collision and boost if the ball is NOT held
                     if not ballHeldBySomeone and isHeadModEnabled then
-                        head.CanCollide = true
+                        head.CanCollide = false
                         
                         -- Boost Trigger logic
                         if isBounceEnabled then
@@ -249,7 +249,7 @@ RusherTab:CreateToggle({Name = "Enable Auto Rusher", CurrentValue = false, Callb
 RusherTab:CreateKeybind({
     Name = "Auto Rusher Keybind",
     CurrentKeybind = "Q",
-    HoldToInteract = false,
+    HoldToInteract = true,
     Flag = "RusherKey",
     Callback = function(Key) autoRusherKey = Key end,
 })
