@@ -1,136 +1,281 @@
--- Ultimate Football Hub 2026
+-- Ultimate Football Hub 2026 (FULL – HEAD COLLISION FIX)
+
 getgenv().SecureMode = true
 
--- Load Rayfield
-local success, Rayfield = pcall(function()
-    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-end)
-if not success then
-    warn("Failed to load Rayfield GUI!")
-    return
-end
+-------------------------------------------------
+-- LOAD RAYFIELD
+-------------------------------------------------
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
+-------------------------------------------------
 -- SERVICES
+-------------------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
+-------------------------------------------------
 -- VARIABLES
-local isHeadModEnabled, targetHeadScale = false, 5
-local isBounceEnabled, bouncePower = false, 30
-local isMagEnabled, magRange = false, 0.3
+-------------------------------------------------
+-- Physics
 local isNoclipEnabled = false
-local isFlying, flySpeed = false, 50
+local isFlying = false
+local flySpeed = 50
 local flyVelocity = Vector3.zero
 local flyAccel, flyFriction = 8, 6
+local walkSpeed = 18
 
-local currentBall = nil
+-- Head / Boost
+local isHeadModEnabled = false
+local targetHeadScale = 5
+local isBounceEnabled = false
+local bouncePower = 30
+
+-- Magnet
+local isMagEnabled = false
+local magRange = 0.3
 local isPulling = false
-local HEAD_BOUNCE_COOLDOWN = 1.2
-local headBounceCooldowns = {}
 
--- AUTO RUSHER VARIABLES
+-- Auto Rusher
 local isAutoRusherEnabled = false
 local autoRusherKey = Enum.KeyCode.Q
 local rusherHolding = false
-local defaultWalkSpeed = 18 
 
--- BALL SEARCH
+-- QB
+local isQBEnabled = false
+local qbTeammatesOnly = true
+local qbThrowMode = "Bullet"
+local throwKey = Enum.KeyCode.E
+local throwPower = 95
+local throwArc = 0.35
+local leadMultiplier = 0.85
+local maxThrowDist = 160
+
+-- Runtime
+local humanoid, hrp
+local currentBall
+local cachedPlayers = {}
+local lastJumpTime = 0
+
+-------------------------------------------------
+-- PLAYER CACHE
+-------------------------------------------------
+local function rebuildPlayerCache()
+    table.clear(cachedPlayers)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer then
+            table.insert(cachedPlayers, p)
+        end
+    end
+end
+Players.PlayerAdded:Connect(rebuildPlayerCache)
+Players.PlayerRemoving:Connect(rebuildPlayerCache)
+rebuildPlayerCache()
+
+-------------------------------------------------
+-- BALL FINDER
+-------------------------------------------------
 task.spawn(function()
     while task.wait(0.5) do
-        currentBall = workspace:FindFirstChild("Football", true)
+        currentBall =
+            workspace:FindFirstChild("Football", true)
             or workspace:FindFirstChild("Ball", true)
     end
 end)
 
--- INPUT HANDLER
-UIS.InputBegan:Connect(function(input, gp)
+-------------------------------------------------
+-- CHARACTER HOOK
+-------------------------------------------------
+local function hookChar(char)
+    humanoid = char:WaitForChild("Humanoid")
+    hrp = char:WaitForChild("HumanoidRootPart")
+
+    humanoid.WalkSpeed = walkSpeed
+
+    humanoid.Jumping:Connect(function()
+        lastJumpTime = tick()
+    end)
+end
+if localPlayer.Character then hookChar(localPlayer.Character) end
+localPlayer.CharacterAdded:Connect(hookChar)
+
+-------------------------------------------------
+-- INPUT
+-------------------------------------------------
+UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
         isPulling = true
-    elseif input.UserInputType == Enum.UserInputType.Keyboard then
-        if input.KeyCode == autoRusherKey then
-            rusherHolding = true
-        end
-    end
-end)
+    elseif i.KeyCode == autoRusherKey then
+        rusherHolding = true
+    elseif i.KeyCode == throwKey and isQBEnabled then
+        -- QB THROW
+        if not currentBall or currentBall.Parent ~= localPlayer.Character then return end
+        if not hrp then return end
 
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isPulling = false
-    elseif input.UserInputType == Enum.UserInputType.Keyboard then
-        if input.KeyCode == autoRusherKey then
-            rusherHolding = false
-        end
-    end
-end)
+        local camCF = camera.CFrame
+        local best, bestDot
 
--- HEAD & PHYSICS MANAGER (CONDITION-BASED BOOST)
-task.spawn(function()
-    while task.wait(0.1) do
-        -- Check if ball is physically in the workspace (not held)
-        local footballInWorkspace = workspace:FindFirstChild("Football") or workspace:FindFirstChild("Ball")
-        local ballHeldBySomeone = false
-
-        if not footballInWorkspace and currentBall and currentBall.Parent then
-            if currentBall.Parent:FindFirstChildOfClass("Humanoid") then
-                ballHeldBySomeone = true
+        for _, p in ipairs(cachedPlayers) do
+            if qbTeammatesOnly and p.Team ~= localPlayer.Team then continue end
+            local c = p.Character
+            local thrp = c and c:FindFirstChild("HumanoidRootPart")
+            local hum = c and c:FindFirstChildOfClass("Humanoid")
+            if thrp and hum and hum.Health > 0 then
+                local dir = thrp.Position - camCF.Position
+                local dist = dir.Magnitude
+                if dist <= maxThrowDist then
+                    local dot = camCF.LookVector:Dot(dir.Unit)
+                    if not bestDot or dot > bestDot then
+                        bestDot = dot
+                        best = thrp
+                    end
+                end
             end
         end
+        if not best then return end
 
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player.Character and player ~= localPlayer then
-                local head = player.Character:FindFirstChild("Head")
-                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-                
-                if head and hrp then
-                    -- Store Original Size
-                    if not head:FindFirstChild("OriginalY") then
-                        local v = Instance.new("NumberValue", head)
-                        v.Name = "OriginalY"
-                        v.Value = head.Size.Y
-                    end
+        local arc = throwArc
+        local lead = leadMultiplier
+        if qbThrowMode == "Bullet" then
+            arc = 0.08
+            lead *= 1.15
+        else
+            arc += 0.25
+            lead *= 0.85
+        end
 
-                    -- 1. Scaling Logic (Always scales if enabled)
-                    if isHeadModEnabled then
-                        head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
-                        head.Transparency = 0.5
-                    else
-                        head.Size = Vector3.new(1, head.OriginalY.Value, 1)
-                        head.Transparency = 0
-                    end
+        local dist = (best.Position - hrp.Position).Magnitude
+        local travelTime = dist / throwPower
+        local predicted = best.Position + best.AssemblyLinearVelocity * travelTime * lead
 
-                    -- 2. Conditional Collision & Boost
-                    -- ONLY allows collision and boost if the ball is NOT held
-                    if not ballHeldBySomeone and isHeadModEnabled then
-                        head.CanCollide = false
-                        
-                        -- Boost Trigger logic
+        currentBall.Parent = workspace
+        currentBall.AssemblyLinearVelocity =
+            (predicted - hrp.Position).Unit * throwPower +
+            Vector3.new(0, throwPower * arc, 0)
+    end
+end)
+
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        isPulling = false
+    elseif i.KeyCode == autoRusherKey then
+        rusherHolding = false
+    end
+end)
+
+-------------------------------------------------
+-- HEAD SIZE
+-------------------------------------------------
+local function applyHeadSize(player, enabled)
+    local head = player.Character and player.Character:FindFirstChild("Head")
+    if not head then return end
+
+    if not head:FindFirstChild("OriginalSize") then
+        local v = Instance.new("Vector3Value", head)
+        v.Name = "OriginalSize"
+        v.Value = head.Size
+    end
+
+    if enabled then
+        head.Size = Vector3.new(targetHeadScale, head.OriginalSize.Value.Y, targetHeadScale)
+        head.Transparency = 0.5
+        head.CanCollide = false
+    else
+        head.Size = head.OriginalSize.Value
+        head.Transparency = 0
+        head.CanCollide = false
+    end
+end
+
+local function refreshHeads()
+    for _, p in ipairs(cachedPlayers) do
+        applyHeadSize(p, isHeadModEnabled)
+    end
+end
+
+-------------------------------------------------
+-- HEARTBEAT LOOP
+-------------------------------------------------
+RunService.Heartbeat:Connect(function(dt)
+    if not humanoid or not hrp then return end
+
+    -- Noclip
+    if isNoclipEnabled then
+        for _, bp in ipairs(localPlayer.Character:GetDescendants()) do
+            if bp:IsA("BasePart") then bp.CanCollide = false end
+        end
+    end
+
+    -- Magnet Pull
+    if isMagEnabled and isPulling and currentBall then
+        local ballHumanoid = currentBall.Parent:FindFirstChildOfClass("Humanoid")
+        if not ballHumanoid then
+            hrp.CFrame = hrp.CFrame:Lerp(
+                CFrame.new(currentBall.Position),
+                (magRange ^ 3) * 0.05
+            )
+        end
+    end
+
+    -- Flight
+    if isFlying then
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        local move = Vector3.zero
+        if UIS:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
+
+        if move.Magnitude > 0 then
+            flyVelocity = flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt)
+        else
+            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
+        end
+        hrp.AssemblyLinearVelocity = flyVelocity
+    end
+
+    -- Auto Rusher
+    if isAutoRusherEnabled and rusherHolding and currentBall then
+        local owner = currentBall.Parent
+        local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
+        if thrp then
+            local dir = (thrp.Position - hrp.Position).Unit
+            humanoid:Move(dir, false)
+        end
+    end
+
+    -- HEAD COLLISION LOGIC
+    if isHeadModEnabled then
+        local now = tick()
+        local hrpPos = hrp.Position
+        local hrpVel = hrp.AssemblyLinearVelocity.Y
+        local jumpElapsed = now - lastJumpTime
+
+        for _, p in ipairs(cachedPlayers) do
+            local head = p.Character and p.Character:FindFirstChild("Head")
+            if head then
+                -- Default collision off
+                head.CanCollide = false
+
+                -- Only enable if falling AND 0.15s after jump
+                if hrpVel < -5 and jumpElapsed >= 0.25 then
+                    local dy = hrpPos.Y - head.Position.Y
+                    local dist = (hrpPos - head.Position).Magnitude
+                    if dy > 0 and dy <= targetHeadScale + 3 and dist <= targetHeadScale + 3 then
+                        head.CanCollide = true
+
+                        -- Head boost
                         if isBounceEnabled then
-                            local myChar = localPlayer.Character
-                            if myChar and myChar:FindFirstChild("HumanoidRootPart") then
-                                local myHRP = myChar.HumanoidRootPart
-                                local dist = (myHRP.Position - head.Position).Magnitude
-                                local verticalVel = myHRP.AssemblyLinearVelocity.Y
-                                local now = tick()
-                                local last = headBounceCooldowns[player] or 0
-
-                                -- Trigger only if falling, close to head, and off cooldown
-                                if dist <= (targetHeadScale + 2.5) and verticalVel < -5 and (now - last >= HEAD_BOUNCE_COOLDOWN) then
-                                    headBounceCooldowns[player] = now
-                                    myHRP.AssemblyLinearVelocity = Vector3.new(
-                                        myHRP.AssemblyLinearVelocity.X,
-                                        bouncePower,
-                                        myHRP.AssemblyLinearVelocity.Z
-                                    )
-                                end
-                            end
+                            hrp.AssemblyLinearVelocity = Vector3.new(
+                                hrp.AssemblyLinearVelocity.X,
+                                bouncePower,
+                                hrp.AssemblyLinearVelocity.Z
+                            )
                         end
-                    else
-                        -- Disable collision if ball is held or mod is off
-                        head.CanCollide = false
                     end
                 end
             end
@@ -138,120 +283,98 @@ task.spawn(function()
     end
 end)
 
--- CORE LOOP
-RunService.Stepped:Connect(function(_, delta)
-    local char = localPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-
-    if isNoclipEnabled then
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
-        end
-    end
-
-    if currentBall and isMagEnabled and isPulling then
-        if not currentBall.Parent:FindFirstChildOfClass("Humanoid") then
-            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(currentBall.Position), (magRange ^ 3) * 0.05)
-        end
-    end
-
-    if isFlying then
-        hum:ChangeState(Enum.HumanoidStateType.Physics)
-        local moveDir = Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
-        
-        if moveDir.Magnitude > 0 then
-            flyVelocity = flyVelocity:Lerp(moveDir.Unit * flySpeed, flyAccel * delta)
-        else
-            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction * delta)
-        end
-        hrp.AssemblyLinearVelocity = flyVelocity
-    end
-
-    if isAutoRusherEnabled and rusherHolding and currentBall and currentBall.Parent then
-        local ballOwner = currentBall.Parent:FindFirstChildOfClass("Humanoid") and currentBall.Parent
-        if ballOwner and ballOwner ~= char then
-            local targetHRP = ballOwner:FindFirstChild("HumanoidRootPart")
-            if targetHRP then
-                hum:Move((targetHRP.Position - hrp.Position).Unit, false)
-            end
-        end
-    end
-end)
-
--- GUI SETUP
+-------------------------------------------------
+-- GUI
+-------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
-    LoadingTitle = "NFL Universe Loader",
-    LoadingSubtitle = "Condition-Sync Active",
-    ConfigurationSaving = { Enabled = true },
-    KeySystem = false
+    LoadingTitle = "All Controls Restored",
+    ConfigurationSaving = { Enabled = true }
 })
 
 local PhysicsTab = Window:CreateTab("Player Physics")
-local MagnetTab = Window:CreateTab("Player Magnet")
-local HeadTab = Window:CreateTab("Head Mod & Boost")
-local FlightTab = Window:CreateTab("Flight")
-local RusherTab = Window:CreateTab("Auto Rusher")
+local MagnetTab  = Window:CreateTab("Magnet")
+local HeadTab    = Window:CreateTab("Head Tech")
+local FlightTab  = Window:CreateTab("Flight")
+local RusherTab  = Window:CreateTab("Auto Rusher")
+local QBTab      = Window:CreateTab("QB")
 
--- Physics Section
+-- Physics
 PhysicsTab:CreateSlider({
-    Name = "Gravity",
-    Range = {1, 196.2},
-    Increment = 1,
-    CurrentValue = 196.2,
-    Callback = function(v) workspace.Gravity = v end
+    Name="Gravity", Range={1,196.2}, Increment=1, CurrentValue=196.2,
+    Callback=function(v) workspace.Gravity = v end
 })
-
 PhysicsTab:CreateSlider({
-    Name = "WalkSpeed",
-    Range = {18, 200},
-    Increment = 1,
-    CurrentValue = 18,
-    Callback = function(v) 
-        local hum = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = v end 
+    Name="WalkSpeed", Range={18,200}, Increment=1, CurrentValue=18,
+    Callback=function(v)
+        walkSpeed=v
+        if humanoid then humanoid.WalkSpeed=v end
     end
 })
+PhysicsTab:CreateToggle({Name="Noclip", Callback=function(v) isNoclipEnabled=v end})
 
-PhysicsTab:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(v) isNoclipEnabled = v end})
+-- Magnet
+MagnetTab:CreateToggle({Name="Enable Magnet", Callback=function(v) isMagEnabled=v end})
+MagnetTab:CreateSlider({
+    Name="Pull Strength", Range={0.1,1}, Increment=0.05, CurrentValue=0.3,
+    Callback=function(v) magRange=v end
+})
 
--- Magnet Section
-MagnetTab:CreateToggle({Name = "Enable Pull Mag", CurrentValue = false, Callback = function(v) isMagEnabled = v end})
-MagnetTab:CreateSlider({Name = "Pull Strength", Range = {0.1, 1}, Increment = 0.05, CurrentValue = 0.3, Callback = function(v) magRange = v end})
-
--- Head & Boost Section
-HeadTab:CreateToggle({Name = "Enable Head Size", CurrentValue = false, Callback = function(v) isHeadModEnabled = v end})
-HeadTab:CreateSlider({Name = "Head Size", Range = {1, 15}, Increment = 0.5, CurrentValue = 5, Callback = function(v) targetHeadScale = v end})
-HeadTab:CreateSection("Boost Tech")
-HeadTab:CreateLabel("Boost only works when the ball is on the ground.")
-HeadTab:CreateToggle({Name = "Enable Boost Tech", CurrentValue = false, Callback = function(v) isBounceEnabled = v end})
+-- Head
+HeadTab:CreateToggle({
+    Name="Enable Head Size",
+    Callback=function(v) isHeadModEnabled=v; refreshHeads() end
+})
 HeadTab:CreateSlider({
-    Name = "Boost Power",
-    Range = {30, 150},
-    Increment = 5,
-    CurrentValue = 30,
-    Callback = function(v) bouncePower = v end
+    Name="Head Size", Range={1,15}, Increment=0.5, CurrentValue=5,
+    Callback=function(v) targetHeadScale=v; if isHeadModEnabled then refreshHeads() end end
+})
+HeadTab:CreateToggle({Name="Enable Head Boost", Callback=function(v) isBounceEnabled=v end})
+HeadTab:CreateSlider({
+    Name="Boost Power", Range={30,150}, Increment=5, CurrentValue=30,
+    Callback=function(v) bouncePower=v end
 })
 
--- Flight Section
-FlightTab:CreateToggle({Name = "Enable Flight", CurrentValue = false, Callback = function(v) isFlying = v end})
-FlightTab:CreateSlider({Name = "Flight Speed", Range = {10, 200}, Increment = 5, CurrentValue = 50, Callback = function(v) flySpeed = v end})
+-- Flight
+FlightTab:CreateToggle({Name="Enable Flight", Callback=function(v) isFlying=v end})
+FlightTab:CreateSlider({
+    Name="Flight Speed", Range={10,200}, Increment=5, CurrentValue=50,
+    Callback=function(v) flySpeed=v end
+})
 
--- Auto Rusher Section
-RusherTab:CreateToggle({Name = "Enable Auto Rusher", CurrentValue = false, Callback = function(v) isAutoRusherEnabled = v end})
+-- Rusher
+RusherTab:CreateToggle({Name="Enable Auto Rusher", Callback=function(v) isAutoRusherEnabled=v end})
 RusherTab:CreateKeybind({
-    Name = "Auto Rusher Keybind",
-    CurrentKeybind = "Q",
-    HoldToInteract = true,
-    Flag = "RusherKey",
-    Callback = function(Key) autoRusherKey = Key end,
+    Name="Rusher Key", CurrentKeybind="Q", HoldToInteract=true,
+    Callback=function(k) autoRusherKey=k end
 })
 
-Rayfield:Notify({Title = "Loaded", Content = "Boost synced to ball location.", Duration = 5})
+-- QB
+QBTab:CreateToggle({Name="Enable QB Assist", Callback=function(v) isQBEnabled=v end})
+QBTab:CreateToggle({Name="Teammates Only", CurrentValue=true, Callback=function(v) qbTeammatesOnly=v end})
+QBTab:CreateDropdown({
+    Name="Throw Type", Options={"Bullet","Lob"}, CurrentOption="Bullet",
+    Callback=function(v) qbThrowMode=v end
+})
+QBTab:CreateSlider({
+    Name="Throw Power", Range={60,140}, Increment=5, CurrentValue=95,
+    Callback=function(v) throwPower=v end
+})
+QBTab:CreateSlider({
+    Name="Throw Arc", Range={0.1,0.7}, Increment=0.05, CurrentValue=0.35,
+    Callback=function(v) throwArc=v end
+})
+QBTab:CreateSlider({
+    Name="Lead Strength", Range={0.5,1.2}, Increment=0.05, CurrentValue=0.85,
+    Callback=function(v) leadMultiplier=v end
+})
+QBTab:CreateKeybind({
+    Name="Throw Key", CurrentKeybind="E",
+    Callback=function(k) throwKey=k end
+})
+
+Rayfield:Notify({
+    Title="Loaded",
+    Content="All features active. Head jump timer with collision fix enabled.",
+    Duration=5
+})
