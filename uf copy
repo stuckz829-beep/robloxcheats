@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (FULL – HEAD COLLISION & TACKLE REACH FIX)
+-- Ultimate Football Hub 2026 (HEAD COLLISION FIX + HEAD SIZE)
 
 getgenv().SecureMode = true
 
@@ -32,10 +32,6 @@ local isHeadModEnabled = false
 local targetHeadScale = 5
 local isBounceEnabled = false
 local bouncePower = 30
-
--- Tackle Reach
-local isTackleReachEnabled = false
-local tackleReach = 5
 
 -- Magnet
 local isMagEnabled = false
@@ -91,9 +87,6 @@ local function hookChar(char)
     humanoid.Jumping:Connect(function()
         lastJumpTime = tick()
     end)
-
-    -- Refresh hitboxes on respawn
-    task.defer(refreshPlayers)
 end
 if localPlayer.Character then hookChar(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(hookChar)
@@ -120,7 +113,7 @@ UIS.InputEnded:Connect(function(i)
 end)
 
 -------------------------------------------------
--- HEAD SIZE / TACKLE REACH
+-- HEAD SIZE
 -------------------------------------------------
 local function applyHeadSize(player, enabled)
     local head = player.Character and player.Character:FindFirstChild("Head")
@@ -143,28 +136,9 @@ local function applyHeadSize(player, enabled)
     end
 end
 
-local function applyTackleReach(player, enabled)
-    if not player.Character then return end
-    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    if not hrp:FindFirstChild("OriginalSize") then
-        local v = Instance.new("Vector3Value", hrp)
-        v.Name = "OriginalSize"
-        v.Value = hrp.Size
-    end
-
-    if enabled then
-        hrp.Size = Vector3.new(tackleReach, hrp.OriginalSize.Value.Y, tackleReach)
-    else
-        hrp.Size = hrp.OriginalSize.Value
-    end
-end
-
-function refreshPlayers()
+local function refreshPlayers()
     for _, p in ipairs(cachedPlayers) do
         applyHeadSize(p, isHeadModEnabled)
-        applyTackleReach(p, isTackleReachEnabled)
     end
 end
 
@@ -215,37 +189,43 @@ RunService.Heartbeat:Connect(function(dt)
         local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
         if thrp then
             local dir = (thrp.Position - hrp.Position).Unit
-            humanoid:Move(dir, false)
+            humanoid:Move(Vector3.new(dir.X,0,dir.Z), false) -- preserve Y for gravity
         end
     end
 
     -- HEAD COLLISION LOGIC
     if isHeadModEnabled then
-        local now = tick()
-        local hrpPos = hrp.Position
-        local hrpVel = hrp.AssemblyLinearVelocity.Y
-        local jumpElapsed = now - lastJumpTime
+        local holdingBall = currentBall and currentBall.Parent == localPlayer.Character
 
         for _, p in ipairs(cachedPlayers) do
             local head = p.Character and p.Character:FindFirstChild("Head")
             if head then
-                -- Default collision off
-                head.CanCollide = false
+                if holdingBall then
+                    -- disable all head collision when holding the ball
+                    head.CanCollide = false
+                else
+                    head.CanCollide = false -- default off
 
-                -- Only enable if falling AND 0.25s after jump
-                if hrpVel < -5 and jumpElapsed >= 0.25 then
-                    local dy = hrpPos.Y - head.Position.Y
-                    local dist = (hrpPos - head.Position).Magnitude
-                    if dy > 0 and dy <= targetHeadScale + 3 and dist <= targetHeadScale + 3 then
-                        head.CanCollide = true
+                    local now = tick()
+                    local hrpPos = hrp.Position
+                    local hrpVel = hrp.AssemblyLinearVelocity.Y
+                    local jumpElapsed = now - lastJumpTime
 
-                        -- Head boost
-                        if isBounceEnabled then
-                            hrp.AssemblyLinearVelocity = Vector3.new(
-                                hrp.AssemblyLinearVelocity.X,
-                                bouncePower,
-                                hrp.AssemblyLinearVelocity.Z
-                            )
+                    -- FALLING + MIN JUMP TIME before collision
+                    if hrpVel < -5 and jumpElapsed >= 0.25 then
+                        local dy = hrpPos.Y - head.Position.Y
+                        local dist = (hrpPos - head.Position).Magnitude
+                        if dy > 0 and dy <= targetHeadScale + 3 and dist <= targetHeadScale + 3 then
+                            head.CanCollide = true
+
+                            -- Head boost
+                            if isBounceEnabled then
+                                hrp.AssemblyLinearVelocity = Vector3.new(
+                                    hrp.AssemblyLinearVelocity.X,
+                                    bouncePower,
+                                    hrp.AssemblyLinearVelocity.Z
+                                )
+                            end
                         end
                     end
                 end
@@ -305,16 +285,6 @@ HeadTab:CreateSlider({
     Callback=function(v) bouncePower=v end
 })
 
--- Tackle Reach
-HeadTab:CreateToggle({
-    Name="Enable Tackle Reach",
-    Callback=function(v) isTackleReachEnabled=v; refreshPlayers() end
-})
-HeadTab:CreateSlider({
-    Name="Tackle Reach", Range={2,15}, Increment=0.5, CurrentValue=5,
-    Callback=function(v) tackleReach=v; if isTackleReachEnabled then refreshPlayers() end end
-})
-
 -- Flight
 FlightTab:CreateToggle({Name="Enable Flight", Callback=function(v) isFlying=v end})
 FlightTab:CreateSlider({
@@ -331,6 +301,6 @@ RusherTab:CreateKeybind({
 
 Rayfield:Notify({
     Title="Loaded",
-    Content="All features active. Head jump timer, collision fix, and tackle reach enabled.",
+    Content="All features active. Head collision disabled while holding the ball.",
     Duration=5
 })
