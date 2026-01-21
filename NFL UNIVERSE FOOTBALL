@@ -202,40 +202,47 @@ if isAutoRusherEnabled and rusherHolding and currentBall then
 end
 
 
-    -- HEAD COLLISION LOGIC
-    if isHeadModEnabled then
-        local now = tick()
-        local hrpPos = hrp.Position
-        local hrpVel = hrp.AssemblyLinearVelocity.Y
-        local jumpElapsed = now - lastJumpTime
+    -- HEAD COLLISION LOGIC (Stick horizontally, free vertical)
+if isHeadModEnabled then
+    local now = tick()
+    local hrpPos = hrp.Position
+    local hrpVel = hrp.AssemblyLinearVelocity.Y
+    local jumpElapsed = now - lastJumpTime
 
-        for _, p in ipairs(cachedPlayers) do
-            local head = p.Character and p.Character:FindFirstChild("Head")
-            if head then
-                -- Default collision off
-                head.CanCollide = false
+    for _, p in ipairs(cachedPlayers) do
+        local head = p.Character and p.Character:FindFirstChild("Head")
+        local humanoid = p.Character and p.Character:FindFirstChild("Humanoid")
+        if head and humanoid and humanoid.Health > 0 then
+            head.CanCollide = false -- default off
 
-                -- Only enable if falling AND 0.25s after jump
-                if hrpVel < -5 and jumpElapsed >= 0.25 then
-                    local dy = hrpPos.Y - head.Position.Y
-                    local dist = (hrpPos - head.Position).Magnitude
-                    if dy > 0 and dy <= targetHeadScale + 3 and dist <= targetHeadScale + 3 then
-                        head.CanCollide = true
+            -- Only enable if falling AND 0.25s after jump
+            if hrpVel < -5 and jumpElapsed >= 0.25 then
+                local dy = hrpPos.Y - head.Position.Y
+                local dist = (hrpPos - head.Position).Magnitude
+                if dy > 0 and dy <= targetHeadScale + 3 and dist <= targetHeadScale + 3 then
+                    head.CanCollide = true
 
-                        -- Head boost
-                        if isBounceEnabled then
-                            hrp.AssemblyLinearVelocity = Vector3.new(
-                                hrp.AssemblyLinearVelocity.X,
-                                bouncePower,
-                                hrp.AssemblyLinearVelocity.Z
-                            )
-                        end
+                    -- Stick horizontally (X/Z) to head, keep Y free
+                    local newPos = Vector3.new(
+                        head.Position.X,
+                        hrp.Position.Y,
+                        head.Position.Z
+                    )
+                    hrp.CFrame = CFrame.new(newPos, hrp.Position + hrp.CFrame.LookVector)
+
+                    -- Apply vertical boost if enabled
+                    if isBounceEnabled then
+                        hrp.AssemblyLinearVelocity = Vector3.new(
+                            hrp.AssemblyLinearVelocity.X,
+                            bouncePower,
+                            hrp.AssemblyLinearVelocity.Z
+                        )
                     end
                 end
             end
         end
     end
-end)
+end
 
 -------------------------------------------------
 -- GUI
