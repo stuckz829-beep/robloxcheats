@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (FULL – HEAD COLLISION FIX)
+-- Ultimate Football Hub 2026 (FULL – HEAD COLLISION FIX, QB REMOVED)
 
 getgenv().SecureMode = true
 
@@ -42,16 +42,6 @@ local isPulling = false
 local isAutoRusherEnabled = false
 local autoRusherKey = Enum.KeyCode.Q
 local rusherHolding = false
-
--- QB
-local isQBEnabled = false
-local qbTeammatesOnly = true
-local qbThrowMode = "Bullet"
-local throwKey = Enum.KeyCode.E
-local throwPower = 95
-local throwArc = 0.35
-local leadMultiplier = 0.85
-local maxThrowDist = 160
 
 -- Runtime
 local humanoid, hrp
@@ -111,51 +101,6 @@ UIS.InputBegan:Connect(function(i, gp)
         isPulling = true
     elseif i.KeyCode == autoRusherKey then
         rusherHolding = true
-    elseif i.KeyCode == throwKey and isQBEnabled then
-        -- QB THROW
-        if not currentBall or currentBall.Parent ~= localPlayer.Character then return end
-        if not hrp then return end
-
-        local camCF = camera.CFrame
-        local best, bestDot
-
-        for _, p in ipairs(cachedPlayers) do
-            if qbTeammatesOnly and p.Team ~= localPlayer.Team then continue end
-            local c = p.Character
-            local thrp = c and c:FindFirstChild("HumanoidRootPart")
-            local hum = c and c:FindFirstChildOfClass("Humanoid")
-            if thrp and hum and hum.Health > 0 then
-                local dir = thrp.Position - camCF.Position
-                local dist = dir.Magnitude
-                if dist <= maxThrowDist then
-                    local dot = camCF.LookVector:Dot(dir.Unit)
-                    if not bestDot or dot > bestDot then
-                        bestDot = dot
-                        best = thrp
-                    end
-                end
-            end
-        end
-        if not best then return end
-
-        local arc = throwArc
-        local lead = leadMultiplier
-        if qbThrowMode == "Bullet" then
-            arc = 0.08
-            lead *= 1.15
-        else
-            arc += 0.25
-            lead *= 0.85
-        end
-
-        local dist = (best.Position - hrp.Position).Magnitude
-        local travelTime = dist / throwPower
-        local predicted = best.Position + best.AssemblyLinearVelocity * travelTime * lead
-
-        currentBall.Parent = workspace
-        currentBall.AssemblyLinearVelocity =
-            (predicted - hrp.Position).Unit * throwPower +
-            Vector3.new(0, throwPower * arc, 0)
     end
 end)
 
@@ -239,14 +184,23 @@ RunService.Heartbeat:Connect(function(dt)
     end
 
     -- Auto Rusher
-    if isAutoRusherEnabled and rusherHolding and currentBall then
-        local owner = currentBall.Parent
-        local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
-        if thrp then
-            local dir = (thrp.Position - hrp.Position).Unit
-            humanoid:Move(dir, false)
+if isAutoRusherEnabled and rusherHolding and currentBall then
+    local owner = currentBall.Parent
+    local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
+    if thrp then
+        local dir = (thrp.Position - hrp.Position)
+        local distance = dir.Magnitude
+        if distance > 0 then
+            dir = dir.Unit
+            hrp.AssemblyLinearVelocity = Vector3.new(
+                dir.X * walkSpeed,
+                hrp.AssemblyLinearVelocity.Y, -- keep vertical velocity
+                dir.Z * walkSpeed
+            )
         end
     end
+end
+
 
     -- HEAD COLLISION LOGIC
     if isHeadModEnabled then
@@ -261,7 +215,7 @@ RunService.Heartbeat:Connect(function(dt)
                 -- Default collision off
                 head.CanCollide = false
 
-                -- Only enable if falling AND 0.15s after jump
+                -- Only enable if falling AND 0.25s after jump
                 if hrpVel < -5 and jumpElapsed >= 0.25 then
                     local dy = hrpPos.Y - head.Position.Y
                     local dist = (hrpPos - head.Position).Magnitude
@@ -297,7 +251,6 @@ local MagnetTab  = Window:CreateTab("Magnet")
 local HeadTab    = Window:CreateTab("Head Tech")
 local FlightTab  = Window:CreateTab("Flight")
 local RusherTab  = Window:CreateTab("Auto Rusher")
-local QBTab      = Window:CreateTab("QB")
 
 -- Physics
 PhysicsTab:CreateSlider({
@@ -347,30 +300,6 @@ RusherTab:CreateToggle({Name="Enable Auto Rusher", Callback=function(v) isAutoRu
 RusherTab:CreateKeybind({
     Name="Rusher Key", CurrentKeybind="Q", HoldToInteract=true,
     Callback=function(k) autoRusherKey=k end
-})
-
--- QB
-QBTab:CreateToggle({Name="Enable QB Assist", Callback=function(v) isQBEnabled=v end})
-QBTab:CreateToggle({Name="Teammates Only", CurrentValue=true, Callback=function(v) qbTeammatesOnly=v end})
-QBTab:CreateDropdown({
-    Name="Throw Type", Options={"Bullet","Lob"}, CurrentOption="Bullet",
-    Callback=function(v) qbThrowMode=v end
-})
-QBTab:CreateSlider({
-    Name="Throw Power", Range={60,140}, Increment=5, CurrentValue=95,
-    Callback=function(v) throwPower=v end
-})
-QBTab:CreateSlider({
-    Name="Throw Arc", Range={0.1,0.7}, Increment=0.05, CurrentValue=0.35,
-    Callback=function(v) throwArc=v end
-})
-QBTab:CreateSlider({
-    Name="Lead Strength", Range={0.5,1.2}, Increment=0.05, CurrentValue=0.85,
-    Callback=function(v) leadMultiplier=v end
-})
-QBTab:CreateKeybind({
-    Name="Throw Key", CurrentKeybind="E",
-    Callback=function(k) throwKey=k end
 })
 
 Rayfield:Notify({
