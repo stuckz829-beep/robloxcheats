@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (Full Updated – Auto Side Tech HOLD + Sphere Tackle + Auto Rusher)
+-- Ultimate Football Hub 2026 (Full Updated – Animation Safe + No Fling)
 getgenv().SecureMode = true
 
 -------------------------------------------------
@@ -32,6 +32,10 @@ local autoSideTechEnabled = true
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
 
+-- Side Tech Animation Safety
+local SIDE_TECH_ANIM_ID = "rbxassetid://8839176574"
+local sideTechAnimPlaying = false
+
 -- Head / Boost
 local isHeadModEnabled = false
 local targetHeadScale = 5
@@ -48,7 +52,7 @@ local isAutoRusherEnabled = false
 local autoRusherKey = Enum.KeyCode.G
 local rusherHolding = false
 
--- Tackle Reach
+-- Tackle Reach (Sphere)
 local tackleReachEnabled = false
 local tackleReachSize = Vector3.new(8,6,8)
 local tackleHitboxes = {}
@@ -57,7 +61,6 @@ local tackleHitboxes = {}
 local humanoid, hrp
 local currentBall
 local cachedPlayers = {}
-local lastJumpTime = 0
 
 -------------------------------------------------
 -- SHIFT LOCK CHECK
@@ -100,10 +103,18 @@ local function hookChar(char)
     hrp = char:WaitForChild("HumanoidRootPart")
     humanoid.WalkSpeed = walkSpeed
 
-    humanoid.Jumping:Connect(function()
-        lastJumpTime = tick()
+    local animator = humanoid:WaitForChild("Animator")
+
+    animator.AnimationPlayed:Connect(function(track)
+        if track.Animation and track.Animation.AnimationId == SIDE_TECH_ANIM_ID then
+            sideTechAnimPlaying = true
+            track.Stopped:Once(function()
+                sideTechAnimPlaying = false
+            end)
+        end
     end)
 end
+
 if localPlayer.Character then hookChar(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(hookChar)
 
@@ -138,10 +149,10 @@ local function refreshPlayers()
 end
 
 -------------------------------------------------
--- SMART TACKLE REACH (Sphere)
+-- SMART TACKLE REACH (NO FLING)
 -------------------------------------------------
 local function updateTackleHitboxes()
-    if not humanoid or not hrp or not currentBall then return end
+    if not tackleReachEnabled or not currentBall or not hrp then return end
 
     for _, p in ipairs(cachedPlayers) do
         local char = p.Character
@@ -150,11 +161,11 @@ local function updateTackleHitboxes()
 
         local holdingBall = currentBall.Parent == char
 
-        if tackleReachEnabled and holdingBall then
+        if holdingBall then
             if not tackleHitboxes[p] then
                 local hb = Instance.new("Part")
-                hb.Name = "TackleSphere"
                 hb.Shape = Enum.PartType.Ball
+                hb.Size = tackleReachSize
                 hb.Anchored = true
                 hb.CanCollide = false
                 hb.Transparency = 0.5
@@ -164,12 +175,7 @@ local function updateTackleHitboxes()
                 tackleHitboxes[p] = hb
             end
 
-            tackleHitboxes[p].Size = tackleReachSize
             tackleHitboxes[p].CFrame = root.CFrame
-
-            if (hrp.Position - root.Position).Magnitude <= tackleReachSize.X / 2 then
-                hrp.CFrame = root.CFrame * CFrame.new(0,0,-tackleReachSize.Z/2)
-            end
         else
             if tackleHitboxes[p] then
                 tackleHitboxes[p]:Destroy()
@@ -188,7 +194,6 @@ UIS.InputBegan:Connect(function(i, gp)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
         isPulling = true
 
-        -- ❌ Disable Auto Side Tech while Shift Locked
         if autoSideTechEnabled and not isShiftLocked() then
             local camLook = Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z).Unit
             sideTechTargetLookVector = Vector3.new(-camLook.Z,0,camLook.X)
@@ -216,8 +221,12 @@ end)
 RunService.Heartbeat:Connect(function(dt)
     if not humanoid or not hrp then return end
 
-    -- Auto Side Tech (blocked in shift lock)
-    if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() then
+    -- Auto Side Tech (animation-safe)
+    if isHoldingSideTech
+        and sideTechTargetLookVector
+        and not isShiftLocked()
+        and not sideTechAnimPlaying then
+
         local vel = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
         hrp.AssemblyLinearVelocity = vel
@@ -235,7 +244,7 @@ RunService.Heartbeat:Connect(function(dt)
     -- Magnet
     if isMagEnabled and isPulling and currentBall then
         if not currentBall.Parent:FindFirstChildOfClass("Humanoid") then
-            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(currentBall.Position), (magRange^3)*0.05)
+            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(currentBall.Position), magRange * 0.05)
         end
     end
 
@@ -262,7 +271,7 @@ RunService.Heartbeat:Connect(function(dt)
         local owner = currentBall.Parent
         local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
         if thrp then
-            local dir = (thrp.Position - hrp.Position)
+            local dir = thrp.Position - hrp.Position
             dir = Vector3.new(dir.X,0,dir.Z)
             if dir.Magnitude > 0 then
                 humanoid:Move(dir.Unit * walkSpeed, false)
@@ -270,7 +279,6 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Tackle Sphere
     updateTackleHitboxes()
 end)
 
@@ -290,15 +298,15 @@ local FlightTab  = Window:CreateTab("Flight")
 local RusherTab  = Window:CreateTab("Auto Rusher")
 local TackleTab  = Window:CreateTab("Tackle Reach")
 
-PhysicsTab:CreateSlider({Name="Gravity", Range={1,196.2}, Increment=1, CurrentValue=gravityVal, Callback=function(v) gravityVal=v; workspace.Gravity=v end})
-PhysicsTab:CreateSlider({Name="WalkSpeed", Range={18,200}, Increment=1, CurrentValue=walkSpeed, Callback=function(v) walkSpeed=v; if humanoid then humanoid.WalkSpeed=v end end})
+PhysicsTab:CreateSlider({Name="Gravity", Range={1,196.2}, Increment=1, CurrentValue=gravityVal, Callback=function(v) gravityVal=v workspace.Gravity=v end})
+PhysicsTab:CreateSlider({Name="WalkSpeed", Range={18,200}, Increment=1, CurrentValue=walkSpeed, Callback=function(v) walkSpeed=v if humanoid then humanoid.WalkSpeed=v end end})
 PhysicsTab:CreateToggle({Name="Noclip", Callback=function(v) isNoclipEnabled=v end})
 
 MagnetTab:CreateToggle({Name="Enable Magnet", Callback=function(v) isMagEnabled=v end})
 MagnetTab:CreateSlider({Name="Pull Strength", Range={0.05,1}, Increment=0.05, CurrentValue=magRange, Callback=function(v) magRange=v end})
 
-HeadTab:CreateToggle({Name="Enable Head Size", Callback=function(v) isHeadModEnabled=v; refreshPlayers() end})
-HeadTab:CreateSlider({Name="Head Size", Range={1,15}, Increment=0.5, CurrentValue=targetHeadScale, Callback=function(v) targetHeadScale=v; if isHeadModEnabled then refreshPlayers() end end})
+HeadTab:CreateToggle({Name="Enable Head Size", Callback=function(v) isHeadModEnabled=v refreshPlayers() end})
+HeadTab:CreateSlider({Name="Head Size", Range={1,15}, Increment=0.5, CurrentValue=targetHeadScale, Callback=function(v) targetHeadScale=v refreshPlayers() end})
 HeadTab:CreateToggle({Name="Enable Head Boost", Callback=function(v) isBounceEnabled=v end})
 HeadTab:CreateSlider({Name="Boost Power", Range={30,150}, Increment=5, CurrentValue=bouncePower, Callback=function(v) bouncePower=v end})
 HeadTab:CreateToggle({Name="Auto Side Tech (HOLD)", Callback=function(v) autoSideTechEnabled=v end})
@@ -313,7 +321,7 @@ TackleTab:CreateToggle({Name="Enable Tackle Reach", Callback=function(v) tackleR
 TackleTab:CreateSlider({Name="Reach Size", Range={4,20}, Increment=1, CurrentValue=8, Callback=function(v) tackleReachSize=Vector3.new(v,6,v) end})
 
 Rayfield:Notify({
-    Title="Loaded",
-    Content="Auto Side Tech is now disabled during Shift Lock.",
-    Duration=5
+    Title = "Loaded",
+    Content = "All controls restored. Animation-safe Side Tech enabled. No fling.",
+    Duration = 5
 })
