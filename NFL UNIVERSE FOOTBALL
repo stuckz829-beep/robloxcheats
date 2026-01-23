@@ -60,6 +60,13 @@ local cachedPlayers = {}
 local lastJumpTime = 0
 
 -------------------------------------------------
+-- SHIFT LOCK CHECK
+-------------------------------------------------
+local function isShiftLocked()
+    return UIS.MouseBehavior == Enum.MouseBehavior.LockCenter
+end
+
+-------------------------------------------------
 -- PLAYER CACHE
 -------------------------------------------------
 local function rebuildPlayerCache()
@@ -131,51 +138,42 @@ local function refreshPlayers()
 end
 
 -------------------------------------------------
--- SMART TACKLE REACH (Sphere, dynamic size)
+-- SMART TACKLE REACH (Sphere)
 -------------------------------------------------
 local function updateTackleHitboxes()
-    if not humanoid or not hrp then return end
-    if not currentBall then return end
+    if not humanoid or not hrp or not currentBall then return end
 
     for _, p in ipairs(cachedPlayers) do
         local char = p.Character
-        if char then
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if not root then continue end
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
 
-            local holdingBall = currentBall and currentBall.Parent == char
+        local holdingBall = currentBall.Parent == char
 
-            if tackleReachEnabled and holdingBall then
-                if not tackleHitboxes[p] then
-                    local hb = Instance.new("Part")
-                    hb.Name = "TackleSphere"
-                    hb.Shape = Enum.PartType.Ball
-                    hb.Anchored = true
-                    hb.CanCollide = false
-                    hb.CanTouch = true
-                    hb.Transparency = 0.5
-                    hb.Material = Enum.Material.Neon
-                    hb.Color = Color3.fromRGB(255,0,0)
-                    hb.Massless = true
-                    hb.Parent = workspace
+        if tackleReachEnabled and holdingBall then
+            if not tackleHitboxes[p] then
+                local hb = Instance.new("Part")
+                hb.Name = "TackleSphere"
+                hb.Shape = Enum.PartType.Ball
+                hb.Anchored = true
+                hb.CanCollide = false
+                hb.Transparency = 0.5
+                hb.Material = Enum.Material.Neon
+                hb.Color = Color3.fromRGB(255,0,0)
+                hb.Parent = workspace
+                tackleHitboxes[p] = hb
+            end
 
-                    tackleHitboxes[p] = hb
-                end
+            tackleHitboxes[p].Size = tackleReachSize
+            tackleHitboxes[p].CFrame = root.CFrame
 
-                -- Update size from slider
-                tackleHitboxes[p].Size = tackleReachSize
-                tackleHitboxes[p].CFrame = root.CFrame
-
-                -- Check if local player is inside the sphere
-                if (hrp.Position - root.Position).Magnitude <= tackleReachSize.X/2 then
-                    -- Perform tackle: move local player to carrier
-                    hrp.CFrame = root.CFrame * CFrame.new(0,0,-tackleReachSize.Z/2)
-                end
-            else
-                if tackleHitboxes[p] then
-                    tackleHitboxes[p]:Destroy()
-                    tackleHitboxes[p] = nil
-                end
+            if (hrp.Position - root.Position).Magnitude <= tackleReachSize.X / 2 then
+                hrp.CFrame = root.CFrame * CFrame.new(0,0,-tackleReachSize.Z/2)
+            end
+        else
+            if tackleHitboxes[p] then
+                tackleHitboxes[p]:Destroy()
+                tackleHitboxes[p] = nil
             end
         end
     end
@@ -186,13 +184,17 @@ end
 -------------------------------------------------
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
+
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
         isPulling = true
-        if autoSideTechEnabled then
+
+        -- ❌ Disable Auto Side Tech while Shift Locked
+        if autoSideTechEnabled and not isShiftLocked() then
             local camLook = Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z).Unit
             sideTechTargetLookVector = Vector3.new(-camLook.Z,0,camLook.X)
             isHoldingSideTech = true
         end
+
     elseif i.KeyCode == autoRusherKey then
         rusherHolding = true
     end
@@ -209,13 +211,13 @@ UIS.InputEnded:Connect(function(i)
 end)
 
 -------------------------------------------------
--- HEARTBEAT LOOP
+-- HEARTBEAT
 -------------------------------------------------
 RunService.Heartbeat:Connect(function(dt)
     if not humanoid or not hrp then return end
 
-    -- Auto Side Tech
-    if isHoldingSideTech and sideTechTargetLookVector then
+    -- Auto Side Tech (blocked in shift lock)
+    if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() then
         local vel = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
         hrp.AssemblyLinearVelocity = vel
@@ -224,7 +226,9 @@ RunService.Heartbeat:Connect(function(dt)
     -- Noclip
     if isNoclipEnabled then
         for _, bp in ipairs(localPlayer.Character:GetDescendants()) do
-            if bp:IsA("BasePart") then bp.CanCollide = false end
+            if bp:IsA("BasePart") then
+                bp.CanCollide = false
+            end
         end
     end
 
@@ -243,11 +247,13 @@ RunService.Heartbeat:Connect(function(dt)
         if UIS:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
         if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
+
         if move.Magnitude > 0 then
-            flyVelocity = flyVelocity:Lerp(move.Unit * flySpeed, flyAccel*dt)
+            flyVelocity = flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt)
         else
-            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction*dt)
+            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
         end
+
         hrp.AssemblyLinearVelocity = flyVelocity
     end
 
@@ -256,41 +262,10 @@ RunService.Heartbeat:Connect(function(dt)
         local owner = currentBall.Parent
         local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
         if thrp then
-            local myPos = hrp.Position
-            local targetPos = thrp.Position
-            local dir = (targetPos - myPos)
+            local dir = (thrp.Position - hrp.Position)
             dir = Vector3.new(dir.X,0,dir.Z)
             if dir.Magnitude > 0 then
                 humanoid:Move(dir.Unit * walkSpeed, false)
-            end
-        end
-    end
-
-    -- Head Collision & Boost
-    if isHeadModEnabled then
-        local holdingBall = currentBall and currentBall.Parent == localPlayer.Character
-        for _, p in ipairs(cachedPlayers) do
-            local head = p.Character and p.Character:FindFirstChild("Head")
-            if head then
-                if holdingBall then
-                    head.CanCollide = false
-                else
-                    head.CanCollide = false
-                    local now = tick()
-                    local hrpPos = hrp.Position
-                    local hrpVel = hrp.AssemblyLinearVelocity.Y
-                    local jumpElapsed = now - lastJumpTime
-                    if hrpVel < -5 and jumpElapsed >= 0.25 then
-                        local dy = hrpPos.Y - head.Position.Y
-                        local dist = (hrpPos - head.Position).Magnitude
-                        if dy > 0 and dy <= targetHeadScale+3 and dist <= targetHeadScale+3 then
-                            head.CanCollide = true
-                            if isBounceEnabled then
-                                hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X,bouncePower,hrp.AssemblyLinearVelocity.Z)
-                            end
-                        end
-                    end
-                end
             end
         end
     end
@@ -315,32 +290,30 @@ local FlightTab  = Window:CreateTab("Flight")
 local RusherTab  = Window:CreateTab("Auto Rusher")
 local TackleTab  = Window:CreateTab("Tackle Reach")
 
--- Physics
 PhysicsTab:CreateSlider({Name="Gravity", Range={1,196.2}, Increment=1, CurrentValue=gravityVal, Callback=function(v) gravityVal=v; workspace.Gravity=v end})
 PhysicsTab:CreateSlider({Name="WalkSpeed", Range={18,200}, Increment=1, CurrentValue=walkSpeed, Callback=function(v) walkSpeed=v; if humanoid then humanoid.WalkSpeed=v end end})
 PhysicsTab:CreateToggle({Name="Noclip", Callback=function(v) isNoclipEnabled=v end})
 
--- Magnet
 MagnetTab:CreateToggle({Name="Enable Magnet", Callback=function(v) isMagEnabled=v end})
 MagnetTab:CreateSlider({Name="Pull Strength", Range={0.05,1}, Increment=0.05, CurrentValue=magRange, Callback=function(v) magRange=v end})
 
--- Head
 HeadTab:CreateToggle({Name="Enable Head Size", Callback=function(v) isHeadModEnabled=v; refreshPlayers() end})
 HeadTab:CreateSlider({Name="Head Size", Range={1,15}, Increment=0.5, CurrentValue=targetHeadScale, Callback=function(v) targetHeadScale=v; if isHeadModEnabled then refreshPlayers() end end})
 HeadTab:CreateToggle({Name="Enable Head Boost", Callback=function(v) isBounceEnabled=v end})
 HeadTab:CreateSlider({Name="Boost Power", Range={30,150}, Increment=5, CurrentValue=bouncePower, Callback=function(v) bouncePower=v end})
-HeadTab:CreateToggle({Name="Auto Side Tech (HOLD)", CurrentValue=false, Callback=function(v) autoSideTechEnabled=v end})
+HeadTab:CreateToggle({Name="Auto Side Tech (HOLD)", Callback=function(v) autoSideTechEnabled=v end})
 
--- Flight
 FlightTab:CreateToggle({Name="Enable Flight", Callback=function(v) isFlying=v end})
 FlightTab:CreateSlider({Name="Flight Speed", Range={10,200}, Increment=5, CurrentValue=flySpeed, Callback=function(v) flySpeed=v end})
 
--- Auto Rusher
 RusherTab:CreateToggle({Name="Enable Auto Rusher", Callback=function(v) isAutoRusherEnabled=v end})
 RusherTab:CreateKeybind({Name="Rusher Key", CurrentKeybind="G", HoldToInteract=true, Callback=function(k) autoRusherKey=k end})
 
--- Tackle Reach
 TackleTab:CreateToggle({Name="Enable Tackle Reach", Callback=function(v) tackleReachEnabled=v end})
 TackleTab:CreateSlider({Name="Reach Size", Range={4,20}, Increment=1, CurrentValue=8, Callback=function(v) tackleReachSize=Vector3.new(v,6,v) end})
 
-Rayfield:Notify({Title="Loaded", Content="All features active. Auto Side Tech, Tackle Sphere, and Auto Rusher fully functional.", Duration=5})
+Rayfield:Notify({
+    Title="Loaded",
+    Content="Auto Side Tech is now disabled during Shift Lock.",
+    Duration=5
+})
