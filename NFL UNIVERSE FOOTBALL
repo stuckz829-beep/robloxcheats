@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (Full Updated – Animation Safe + No Fling)
+-- Ultimate Football Hub 2026 (Full Updated – Smooth Magnet + Persistent Head Collision)
 getgenv().SecureMode = true
 
 -------------------------------------------------
@@ -31,8 +31,6 @@ local gravityVal = 196.2
 local autoSideTechEnabled = true
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
-
--- Side Tech Animation Safety
 local SIDE_TECH_ANIM_ID = "rbxassetid://8839176574"
 local sideTechAnimPlaying = false
 
@@ -114,31 +112,63 @@ local function hookChar(char)
         end
     end)
 end
-
 if localPlayer.Character then hookChar(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(hookChar)
 
 -------------------------------------------------
--- HEAD SIZE
+-- HEAD SIZE + PERSISTENT COLLISION
 -------------------------------------------------
 local function applyHeadSize(player, enabled)
-    local head = player.Character and player.Character:FindFirstChild("Head")
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
     if not head then return end
 
-    if not head:FindFirstChild("OriginalSize") then
-        local v = Instance.new("Vector3Value", head)
-        v.Name = "OriginalSize"
-        v.Value = head.Size
+    -- Save original size
+    if not head:FindFirstChild("OriginalY") then
+        local v = Instance.new("NumberValue", head)
+        v.Name = "OriginalY"
+        v.Value = head.Size.Y
     end
 
+    -- Apply size
     if enabled then
-        head.Size = Vector3.new(targetHeadScale, head.OriginalSize.Value.Y, targetHeadScale)
+        head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
         head.Transparency = 0.5
-        head.CanCollide = false
     else
-        head.Size = head.OriginalSize.Value
+        head.Size = Vector3.new(1, head.OriginalY.Value, 1)
         head.Transparency = 0
-        head.CanCollide = false
+        head.CanCollide = true
+    end
+end
+
+local function updateHeadCollision()
+    if not isHeadModEnabled then return end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == localPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+        local head = char:FindFirstChild("Head")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local humanoid = char:FindFirstChild("Humanoid")
+        if not head or not humanoid or not hrp then continue end
+
+        -- Persistent collision + no climbing
+        local isStandingOnHead = false
+        local rayParam = RaycastParams.new()
+        rayParam.FilterDescendantsInstances = {char}
+        rayParam.FilterType = Enum.RaycastFilterType.Exclude
+
+        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
+        if ray and ray.Instance == head then
+            isStandingOnHead = true
+        end
+
+        local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
+        local timeSinceJump = tick() - lastJump
+
+        head.CanCollide = isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30)
     end
 end
 
@@ -222,11 +252,7 @@ RunService.Heartbeat:Connect(function(dt)
     if not humanoid or not hrp then return end
 
     -- Auto Side Tech (animation-safe)
-    if isHoldingSideTech
-        and sideTechTargetLookVector
-        and not isShiftLocked()
-        and not sideTechAnimPlaying then
-
+    if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() and not sideTechAnimPlaying then
         local vel = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
         hrp.AssemblyLinearVelocity = vel
@@ -241,10 +267,11 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Magnet
+    -- Smooth Magnet (less blatant)
     if isMagEnabled and isPulling and currentBall then
         if not currentBall.Parent:FindFirstChildOfClass("Humanoid") then
-            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(currentBall.Position), magRange * 0.05)
+            local targetPos = currentBall.Position
+            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(targetPos), magRange * 0.02)
         end
     end
 
@@ -280,6 +307,7 @@ RunService.Heartbeat:Connect(function(dt)
     end
 
     updateTackleHitboxes()
+    updateHeadCollision()
 end)
 
 -------------------------------------------------
@@ -322,6 +350,6 @@ TackleTab:CreateSlider({Name="Reach Size", Range={4,20}, Increment=1, CurrentVal
 
 Rayfield:Notify({
     Title = "Loaded",
-    Content = "All controls restored. Animation-safe Side Tech enabled. No fling.",
+    Content = "Smooth Magnet + Persistent Head Collision enabled. Animation-safe Side Tech active.",
     Duration = 5
 })
