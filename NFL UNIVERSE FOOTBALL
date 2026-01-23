@@ -333,9 +333,9 @@ PhysicsTab:CreateToggle({Name="Noclip", Callback=function(v) isNoclipEnabled=v e
 MagnetTab:CreateToggle({Name="Enable Magnet", Callback=function(v) isMagEnabled=v end})
 MagnetTab:CreateSlider({Name="Pull Strength", Range={0.05,1}, Increment=0.05, CurrentValue=magRange, Callback=function(v) magRange=v end})
 
-HeadTab:CreateToggle({Name="Enable Head Size", Callback=function(v) isHeadModEnabled=v refreshPlayers() end})
+HeadTab:CreateToggle({Name="Enable Head Size (DOWN)", Callback=function(v) isHeadModEnabled=v refreshPlayers() end})
 HeadTab:CreateSlider({Name="Head Size", Range={1,15}, Increment=0.5, CurrentValue=targetHeadScale, Callback=function(v) targetHeadScale=v refreshPlayers() end})
-HeadTab:CreateToggle({Name="Enable Head Boost", Callback=function(v) isBounceEnabled=v end})
+HeadTab:CreateToggle({Name="Enable Head Boost (BETA)", Callback=function(v) isBounceEnabled=v end})
 HeadTab:CreateSlider({Name="Boost Power", Range={30,150}, Increment=5, CurrentValue=bouncePower, Callback=function(v) bouncePower=v end})
 HeadTab:CreateToggle({Name="Auto Side Tech (HOLD)", Callback=function(v) autoSideTechEnabled=v end})
 
