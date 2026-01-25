@@ -28,7 +28,7 @@ local walkSpeed = 18
 local gravityVal = 196.2
 
 -- Auto Side Tech (HOLD)
-local autoSideTechEnabled = true
+local autoSideTechEnabled = false
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
 local SIDE_TECH_ANIM_ID = "rbxassetid://8839176574"
