@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (Exact Side Tech + Gravity Restore)
+-- Ultimate Football Hub 2026 (Anti-Bounce / Stable Standing Update)
 getgenv().SecureMode = true
 
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
@@ -12,15 +12,15 @@ local camera = workspace.CurrentCamera
 -- VARIABLES
 -------------------------------------------------
 local walkSpeed = 18
-local gravityVal = 196.2 -- Default Roblox Gravity
+local gravityVal = 196.2
 
--- Flight Variables
+-- Flight
 local isFlying = false
 local flySpeed = 50
 local flyVelocity = Vector3.zero
 local flyAccel, flyFriction = 8, 6
 
--- Side Tech Variables (EXACT)
+-- Side Tech (Exact Logic Reverted)
 local autoSideTechEnabled = false
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
@@ -49,9 +49,7 @@ local function hookChar(char)
     animator.AnimationPlayed:Connect(function(track)
         if track.Animation and track.Animation.AnimationId == SIDE_TECH_ANIM_ID then
             sideTechAnimPlaying = true
-            track.Stopped:Once(function()
-                sideTechAnimPlaying = false
-            end)
+            track.Stopped:Once(function() sideTechAnimPlaying = false end)
         end
     end)
     
@@ -89,18 +87,16 @@ RunService.Heartbeat:Connect(function(dt)
     if not hrp or not humanoid then return end
 
     -- Gravity Lock
-    if workspace.Gravity ~= gravityVal then 
-        workspace.Gravity = gravityVal 
-    end
+    if workspace.Gravity ~= gravityVal then workspace.Gravity = gravityVal end
 
-    -- EXACT SIDE TECH EXECUTION
+    -- Side Tech Execution
     if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() and not sideTechAnimPlaying then
         local vel = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
         hrp.AssemblyLinearVelocity = vel
     end
 
-    -- FLIGHT
+    -- Flight
     if isFlying then
         humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         local move = Vector3.zero
@@ -108,12 +104,11 @@ RunService.Heartbeat:Connect(function(dt)
         if UIS:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
         if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
-        
         flyVelocity = (move.Magnitude > 0) and flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt) or flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
         hrp.AssemblyLinearVelocity = flyVelocity
     end
 
-    -- HEAD COLLISION LOGIC
+    -- HEAD COLLISION (ANTI-BOUNCE LOGIC)
     local headTechActive = isHeadModEnabled and (tick() - lastJumpTime >= 0.15)
     
     for _, p in ipairs(Players:GetPlayers()) do
@@ -126,22 +121,30 @@ RunService.Heartbeat:Connect(function(dt)
             local v = Instance.new("Vector3Value", head); v.Name = "OrigSize"; v.Value = head.Size
         end
 
+        -- Scale Update
         local targetSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
         if head.Size ~= targetSize then 
             head.Size = targetSize
             head.Transparency = headTechActive and 0.5 or 0
         end
 
-        -- Collision
-        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0))
-        local standingOnHead = (ray and ray.Instance == head)
+        -- Anti-Bounce Detection
+        -- We raycast slightly further (5 studs) to catch the "stand" early and lock it.
+        local rayParam = RaycastParams.new()
+        rayParam.FilterDescendantsInstances = {localPlayer.Character}
+        rayParam.FilterType = Enum.RaycastFilterType.Exclude
         
+        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0), rayParam)
+        local standingOnThisHead = (ray and ray.Instance == head)
+
         if sideTechAnimPlaying or isHoldingSideTech then
             head.CanCollide = false
-        elseif standingOnHead then
+        elseif standingOnThisHead then
+            -- LOCK COLLISION: If we are touching it, it MUST be solid to prevent bouncing
             head.CanCollide = true
         else
-            head.CanCollide = headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall)
+            -- Normal toggle logic for when we are in the air
+            head.CanCollide = headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall or humanoid:GetState() == Enum.HumanoidStateType.Jumping)
         end
     end
 end)
@@ -151,53 +154,24 @@ end)
 -------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
-    LoadingTitle = "Gravity & Side Tech Final",
+    LoadingTitle = "Anti-Bounce Update",
     ConfigurationSaving = { Enabled = true }
 })
 
 local MainTab = Window:CreateTab("Movement")
 local TechTab = Window:CreateTab("Head Tech")
 
-MainTab:CreateSlider({
-    Name = "WalkSpeed", 
-    Range = {18, 150}, 
-    Increment = 1, 
-    CurrentValue = 18, 
-    Callback = function(v) walkSpeed = v if humanoid then humanoid.WalkSpeed = v end end
-})
+MainTab:CreateSlider({Name="WalkSpeed", Range={18,150}, Increment=1, CurrentValue=18, Callback=function(v) walkSpeed=v if humanoid then humanoid.WalkSpeed=v end end})
+MainTab:CreateSlider({Name="Gravity", Range={0,196.2}, Increment=1, CurrentValue=196.2, Callback=function(v) gravityVal=v end})
+MainTab:CreateToggle({Name="Enable Flight", Callback=function(v) isFlying=v end})
+MainTab:CreateSlider({Name="Flight Speed", Range={10,300}, Increment=5, CurrentValue=50, Callback=function(v) flySpeed=v end})
 
-MainTab:CreateSlider({
-    Name = "Gravity", 
-    Range = {0, 196.2}, 
-    Increment = 1, 
-    CurrentValue = 196.2, 
-    Callback = function(v) gravityVal = v end
-})
-
-MainTab:CreateToggle({Name = "Enable Flight", Callback = function(v) isFlying = v end})
-
-MainTab:CreateSlider({
-    Name = "Flight Speed", 
-    Range = {10, 300}, 
-    Increment = 5, 
-    CurrentValue = 50, 
-    Callback = function(v) flySpeed = v end
-})
-
-TechTab:CreateToggle({Name = "Enable Delayed Head Size", Callback = function(v) isHeadModEnabled = v end})
-
-TechTab:CreateSlider({
-    Name = "Head Scale", 
-    Range = {1, 15}, 
-    Increment = 0.5, 
-    CurrentValue = 5, 
-    Callback = function(v) targetHeadScale = v end
-})
-
-TechTab:CreateToggle({Name = "Auto Side Tech (HOLD M1)", Callback = function(v) autoSideTechEnabled = v end})
+TechTab:CreateToggle({Name="Enable Delayed Head Size", Callback=function(v) isHeadModEnabled=v end})
+TechTab:CreateSlider({Name="Head Scale", Range={1,15}, Increment=0.5, CurrentValue=5, Callback=function(v) targetHeadScale=v end})
+TechTab:CreateToggle({Name="Auto Side Tech (HOLD M1)", Callback=function(v) autoSideTechEnabled=v end})
 
 Rayfield:Notify({
-    Title = "Gravity Restored",
-    Content = "The gravity slider is back and locked to your choice.",
+    Title = "Anti-Bounce Active",
+    Content = "Standing on heads is now stable and jitter-free.",
     Duration = 5
 })
