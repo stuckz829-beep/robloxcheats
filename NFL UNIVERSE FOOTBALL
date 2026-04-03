@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (Dive-Safe Collision Update)
+-- Ultimate Football Hub 2026 (Exact Side Tech + Gravity Restore)
 getgenv().SecureMode = true
 
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
@@ -12,20 +12,20 @@ local camera = workspace.CurrentCamera
 -- VARIABLES
 -------------------------------------------------
 local walkSpeed = 18
-local gravityVal = 196.2
+local gravityVal = 196.2 -- Default Roblox Gravity
 
--- Flight
+-- Flight Variables
 local isFlying = false
 local flySpeed = 50
 local flyVelocity = Vector3.zero
 local flyAccel, flyFriction = 8, 6
 
--- Side Tech
+-- Side Tech Variables (EXACT)
 local autoSideTechEnabled = false
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
-local SIDE_TECH_ANIM_ID = "8839176574" -- Base ID for detection
-local mySideTechActive = false
+local SIDE_TECH_ANIM_ID = "rbxassetid://8839176574"
+local sideTechAnimPlaying = false
 
 -- Head Tech
 local isHeadModEnabled = false
@@ -35,96 +35,39 @@ local lastJumpTime = 0
 local humanoid, hrp
 
 -------------------------------------------------
--- ANIMATION TRACKER (FOR ANY PLAYER)
+-- UTILS
 -------------------------------------------------
-local function isDiving(char)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return false end
-    local animator = hum:FindFirstChildOfClass("Animator")
-    if not animator then return false end
-    
-    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-        if track.Animation and track.Animation.AnimationId:find(SIDE_TECH_ANIM_ID) then
-            return true
-        end
-    end
-    return false
+local function isShiftLocked()
+    return UIS.MouseBehavior == Enum.MouseBehavior.LockCenter
 end
 
--------------------------------------------------
--- CHARACTER HOOK
--------------------------------------------------
 local function hookChar(char)
     humanoid = char:WaitForChild("Humanoid")
     hrp = char:WaitForChild("HumanoidRootPart")
     
-    humanoid.Jumping:Connect(function() 
-        lastJumpTime = tick() 
+    local animator = humanoid:WaitForChild("Animator")
+    animator.AnimationPlayed:Connect(function(track)
+        if track.Animation and track.Animation.AnimationId == SIDE_TECH_ANIM_ID then
+            sideTechAnimPlaying = true
+            track.Stopped:Once(function()
+                sideTechAnimPlaying = false
+            end)
+        end
     end)
+    
+    humanoid.Jumping:Connect(function() lastJumpTime = tick() end)
 end
 
 if localPlayer.Character then hookChar(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(hookChar)
 
 -------------------------------------------------
--- CORE UPDATES
--------------------------------------------------
-local function updateHeadTech()
-    local timeSinceJump = tick() - lastJumpTime
-    local headTechActive = isHeadModEnabled and (timeSinceJump >= 0.15)
-    
-    -- Check if I am currently diving
-    mySideTechActive = isDiving(localPlayer.Character)
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == localPlayer then continue end
-        local char = p.Character
-        if not char then continue end
-        
-        local head = char:FindFirstChild("Head")
-        if head then
-            if not head:FindFirstChild("OrigSize") then
-                local v = Instance.new("Vector3Value", head)
-                v.Name = "OrigSize"
-                v.Value = head.Size
-            end
-
-            -- Update Visuals
-            local goalSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
-            if head.Size ~= goalSize then head.Size = goalSize end
-            head.Transparency = headTechActive and 0.5 or 0
-
-            -- DIVE-SAFE COLLISION LOGIC
-            -- If I am diving OR the person I'm touching is diving, disable collision
-            local targetDiving = isDiving(char)
-            
-            local rayParam = RaycastParams.new()
-            rayParam.FilterDescendantsInstances = {localPlayer.Character}
-            rayParam.FilterType = Enum.RaycastFilterType.Exclude
-            local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0), rayParam)
-            
-            local standingOnHead = (ray and ray.Instance == head)
-
-            if mySideTechActive or targetDiving then
-                head.CanCollide = false
-            elseif standingOnHead then
-                head.CanCollide = true
-            elseif headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall or humanoid:GetState() == Enum.HumanoidStateType.Jumping) then
-                head.CanCollide = true
-            else
-                head.CanCollide = false
-            end
-        end
-    end
-end
-
--------------------------------------------------
--- INPUTS
+-- INPUT
 -------------------------------------------------
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then 
-        if autoSideTechEnabled and UIS.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if autoSideTechEnabled and not isShiftLocked() then
             local camLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
             sideTechTargetLookVector = Vector3.new(-camLook.Z, 0, camLook.X)
             isHoldingSideTech = true
@@ -133,8 +76,9 @@ UIS.InputBegan:Connect(function(i, gp)
 end)
 
 UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then 
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
         isHoldingSideTech = false
+        sideTechTargetLookVector = nil
     end
 end)
 
@@ -144,16 +88,19 @@ end)
 RunService.Heartbeat:Connect(function(dt)
     if not hrp or not humanoid then return end
 
-    if workspace.Gravity ~= gravityVal then workspace.Gravity = gravityVal end
-
-    -- Side Tech Mechanics
-    if isHoldingSideTech and sideTechTargetLookVector and not mySideTechActive then
-        local currentVel = hrp.AssemblyLinearVelocity
-        hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
-        hrp.AssemblyLinearVelocity = currentVel
+    -- Gravity Lock
+    if workspace.Gravity ~= gravityVal then 
+        workspace.Gravity = gravityVal 
     end
 
-    -- Flight Mechanics
+    -- EXACT SIDE TECH EXECUTION
+    if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() and not sideTechAnimPlaying then
+        local vel = hrp.AssemblyLinearVelocity
+        hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
+        hrp.AssemblyLinearVelocity = vel
+    end
+
+    -- FLIGHT
     if isFlying then
         humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         local move = Vector3.zero
@@ -162,23 +109,49 @@ RunService.Heartbeat:Connect(function(dt)
         if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
         if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
         
-        if move.Magnitude > 0 then
-            flyVelocity = flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt)
-        else
-            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
-        end
+        flyVelocity = (move.Magnitude > 0) and flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt) or flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
         hrp.AssemblyLinearVelocity = flyVelocity
     end
 
-    updateHeadTech()
+    -- HEAD COLLISION LOGIC
+    local headTechActive = isHeadModEnabled and (tick() - lastJumpTime >= 0.15)
+    
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == localPlayer then continue end
+        local char = p.Character
+        local head = char and char:FindFirstChild("Head")
+        if not head then continue end
+
+        if not head:FindFirstChild("OrigSize") then
+            local v = Instance.new("Vector3Value", head); v.Name = "OrigSize"; v.Value = head.Size
+        end
+
+        local targetSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
+        if head.Size ~= targetSize then 
+            head.Size = targetSize
+            head.Transparency = headTechActive and 0.5 or 0
+        end
+
+        -- Collision
+        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0))
+        local standingOnHead = (ray and ray.Instance == head)
+        
+        if sideTechAnimPlaying or isHoldingSideTech then
+            head.CanCollide = false
+        elseif standingOnHead then
+            head.CanCollide = true
+        else
+            head.CanCollide = headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall)
+        end
+    end
 end)
 
 -------------------------------------------------
--- GUI SETUP
+-- GUI
 -------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
-    LoadingTitle = "Dive-Safe Movement Active",
+    LoadingTitle = "Gravity & Side Tech Final",
     ConfigurationSaving = { Enabled = true }
 })
 
@@ -186,56 +159,45 @@ local MainTab = Window:CreateTab("Movement")
 local TechTab = Window:CreateTab("Head Tech")
 
 MainTab:CreateSlider({
-    Name = "WalkSpeed",
-    Range = {18, 150},
-    Increment = 1,
-    CurrentValue = 18,
+    Name = "WalkSpeed", 
+    Range = {18, 150}, 
+    Increment = 1, 
+    CurrentValue = 18, 
     Callback = function(v) walkSpeed = v if humanoid then humanoid.WalkSpeed = v end end
 })
 
 MainTab:CreateSlider({
-    Name = "Gravity",
-    Range = {0, 196.2},
-    Increment = 1,
-    CurrentValue = 196.2,
+    Name = "Gravity", 
+    Range = {0, 196.2}, 
+    Increment = 1, 
+    CurrentValue = 196.2, 
     Callback = function(v) gravityVal = v end
 })
 
-MainTab:CreateSection("Flight Controls")
-MainTab:CreateToggle({
-    Name = "Enable Flight",
-    Callback = function(v) isFlying = v end
-})
+MainTab:CreateToggle({Name = "Enable Flight", Callback = function(v) isFlying = v end})
 
 MainTab:CreateSlider({
-    Name = "Flight Speed",
-    Range = {10, 300},
-    Increment = 5,
-    CurrentValue = 50,
+    Name = "Flight Speed", 
+    Range = {10, 300}, 
+    Increment = 5, 
+    CurrentValue = 50, 
     Callback = function(v) flySpeed = v end
 })
 
-TechTab:CreateToggle({
-    Name = "Enable Delayed Head Size",
-    Callback = function(v) isHeadModEnabled = v end
-})
+TechTab:CreateToggle({Name = "Enable Delayed Head Size", Callback = function(v) isHeadModEnabled = v end})
 
 TechTab:CreateSlider({
-    Name = "Head Scale",
-    Range = {1, 15},
-    Increment = 0.5,
-    CurrentValue = 5,
+    Name = "Head Scale", 
+    Range = {1, 15}, 
+    Increment = 0.5, 
+    CurrentValue = 5, 
     Callback = function(v) targetHeadScale = v end
 })
 
-TechTab:CreateSection("Side Tech")
-TechTab:CreateToggle({
-    Name = "Auto Side Tech (HOLD M1)",
-    Callback = function(v) autoSideTechEnabled = v end
-})
+TechTab:CreateToggle({Name = "Auto Side Tech (HOLD M1)", Callback = function(v) autoSideTechEnabled = v end})
 
 Rayfield:Notify({
-    Title = "Hub Updated",
-    Content = "Symmetrical dive collision safety enabled.",
+    Title = "Gravity Restored",
+    Content = "The gravity slider is back and locked to your choice.",
     Duration = 5
 })
