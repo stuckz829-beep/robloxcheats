@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (Anti-Bounce / Stable Standing Update)
+-- Ultimate Football Hub 2026 (Lag-Optimized Anti-Bounce)
 getgenv().SecureMode = true
 
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
@@ -59,6 +59,10 @@ end
 if localPlayer.Character then hookChar(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(hookChar)
 
+-- Pre-allocate RaycastParams to save memory/CPU
+local rayParam = RaycastParams.new()
+rayParam.FilterType = Enum.RaycastFilterType.Exclude
+
 -------------------------------------------------
 -- INPUT
 -------------------------------------------------
@@ -108,7 +112,7 @@ RunService.Heartbeat:Connect(function(dt)
         hrp.AssemblyLinearVelocity = flyVelocity
     end
 
-    -- HEAD COLLISION (ANTI-BOUNCE LOGIC)
+    -- HEAD COLLISION (LAG OPTIMIZED)
     local headTechActive = isHeadModEnabled and (tick() - lastJumpTime >= 0.15)
     
     for _, p in ipairs(Players:GetPlayers()) do
@@ -117,34 +121,43 @@ RunService.Heartbeat:Connect(function(dt)
         local head = char and char:FindFirstChild("Head")
         if not head then continue end
 
+        -- Only run logic if player is close enough to matter (25 studs)
+        local distance = (hrp.Position - head.Position).Magnitude
+        if distance > 25 then 
+            -- Reset distant players to normal to save resources
+            if head.Transparency ~= 0 then head.Transparency = 0 end
+            continue 
+        end
+
         if not head:FindFirstChild("OrigSize") then
             local v = Instance.new("Vector3Value", head); v.Name = "OrigSize"; v.Value = head.Size
         end
 
-        -- Scale Update
+        -- Scale Update (Only updates if necessary to prevent property-change lag)
         local targetSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
         if head.Size ~= targetSize then 
             head.Size = targetSize
-            head.Transparency = headTechActive and 0.5 or 0
+        end
+        
+        local targetTrans = headTechActive and 0.5 or 0
+        if head.Transparency ~= targetTrans then
+            head.Transparency = targetTrans
         end
 
         -- Anti-Bounce Detection
-        -- We raycast slightly further (5 studs) to catch the "stand" early and lock it.
-        local rayParam = RaycastParams.new()
         rayParam.FilterDescendantsInstances = {localPlayer.Character}
-        rayParam.FilterType = Enum.RaycastFilterType.Exclude
-        
         local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0), rayParam)
         local standingOnThisHead = (ray and ray.Instance == head)
 
         if sideTechAnimPlaying or isHoldingSideTech then
-            head.CanCollide = false
+            if head.CanCollide then head.CanCollide = false end
         elseif standingOnThisHead then
-            -- LOCK COLLISION: If we are touching it, it MUST be solid to prevent bouncing
-            head.CanCollide = true
+            if not head.CanCollide then head.CanCollide = true end
         else
-            -- Normal toggle logic for when we are in the air
-            head.CanCollide = headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall or humanoid:GetState() == Enum.HumanoidStateType.Jumping)
+            local shouldCollide = headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall or humanoid:GetState() == Enum.HumanoidStateType.Jumping)
+            if head.CanCollide ~= shouldCollide then
+                head.CanCollide = shouldCollide
+            end
         end
     end
 end)
@@ -154,7 +167,7 @@ end)
 -------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
-    LoadingTitle = "Anti-Bounce Update",
+    LoadingTitle = "Lag-Free Optimization",
     ConfigurationSaving = { Enabled = true }
 })
 
@@ -171,7 +184,7 @@ TechTab:CreateSlider({Name="Head Scale", Range={1,15}, Increment=0.5, CurrentVal
 TechTab:CreateToggle({Name="Auto Side Tech (HOLD M1)", Callback=function(v) autoSideTechEnabled=v end})
 
 Rayfield:Notify({
-    Title = "Anti-Bounce Active",
-    Content = "Standing on heads is now stable and jitter-free.",
+    Title = "Performance Update",
+    Content = "Lag spikes removed. Anti-Bounce logic preserved.",
     Duration = 5
 })
