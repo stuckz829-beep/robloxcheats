@@ -1,14 +1,7 @@
--- Ultimate Football Hub 2026 (Full Updated – Smooth Magnet + Persistent Head Collision)
+-- Ultimate Football Hub 2026 (Exact Side Tech + Gravity Restore)
 getgenv().SecureMode = true
 
--------------------------------------------------
--- LOAD RAYFIELD
--------------------------------------------------
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-
--------------------------------------------------
--- SERVICES
--------------------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -18,91 +11,41 @@ local camera = workspace.CurrentCamera
 -------------------------------------------------
 -- VARIABLES
 -------------------------------------------------
--- Physics
-local isNoclipEnabled = false
+local walkSpeed = 18
+local gravityVal = 196.2 -- Default Roblox Gravity
+
+-- Flight Variables
 local isFlying = false
 local flySpeed = 50
 local flyVelocity = Vector3.zero
 local flyAccel, flyFriction = 8, 6
-local walkSpeed = 18
-local gravityVal = 196.2
 
--- Auto Side Tech (HOLD)
+-- Side Tech Variables (EXACT)
 local autoSideTechEnabled = false
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
 local SIDE_TECH_ANIM_ID = "rbxassetid://8839176574"
 local sideTechAnimPlaying = false
 
--- Head / Boost
+-- Head Tech
 local isHeadModEnabled = false
 local targetHeadScale = 5
-local isBounceEnabled = false
-local bouncePower = 30
+local lastJumpTime = 0
 
--- Magnet
-local isMagEnabled = false
-local magRange = 0.15
-local isPulling = false
-
--- Auto Rusher
-local isAutoRusherEnabled = false
-local autoRusherKey = Enum.KeyCode.G
-local rusherHolding = false
-
--- Tackle Reach (Sphere)
-local tackleReachEnabled = false
-local tackleReachSize = Vector3.new(8,6,8)
-local tackleHitboxes = {}
-
--- Runtime
 local humanoid, hrp
-local currentBall
-local cachedPlayers = {}
 
 -------------------------------------------------
--- SHIFT LOCK CHECK
+-- UTILS
 -------------------------------------------------
 local function isShiftLocked()
     return UIS.MouseBehavior == Enum.MouseBehavior.LockCenter
 end
 
--------------------------------------------------
--- PLAYER CACHE
--------------------------------------------------
-local function rebuildPlayerCache()
-    table.clear(cachedPlayers)
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= localPlayer then
-            table.insert(cachedPlayers, p)
-        end
-    end
-end
-Players.PlayerAdded:Connect(rebuildPlayerCache)
-Players.PlayerRemoving:Connect(rebuildPlayerCache)
-rebuildPlayerCache()
-
--------------------------------------------------
--- BALL FINDER
--------------------------------------------------
-task.spawn(function()
-    while task.wait(0.5) do
-        currentBall =
-            workspace:FindFirstChild("Football", true)
-            or workspace:FindFirstChild("Ball", true)
-    end
-end)
-
--------------------------------------------------
--- CHARACTER HOOK
--------------------------------------------------
 local function hookChar(char)
     humanoid = char:WaitForChild("Humanoid")
     hrp = char:WaitForChild("HumanoidRootPart")
-    humanoid.WalkSpeed = walkSpeed
-
+    
     local animator = humanoid:WaitForChild("Animator")
-
     animator.AnimationPlayed:Connect(function(track)
         if track.Animation and track.Animation.AnimationId == SIDE_TECH_ANIM_ID then
             sideTechAnimPlaying = true
@@ -111,137 +54,31 @@ local function hookChar(char)
             end)
         end
     end)
+    
+    humanoid.Jumping:Connect(function() lastJumpTime = tick() end)
 end
+
 if localPlayer.Character then hookChar(localPlayer.Character) end
 localPlayer.CharacterAdded:Connect(hookChar)
-
--------------------------------------------------
--- HEAD SIZE + PERSISTENT COLLISION
--------------------------------------------------
-local function applyHeadSize(player, enabled)
-    local char = player.Character
-    if not char then return end
-    local head = char:FindFirstChild("Head")
-    if not head then return end
-
-    -- Save original size
-    if not head:FindFirstChild("OriginalY") then
-        local v = Instance.new("NumberValue", head)
-        v.Name = "OriginalY"
-        v.Value = head.Size.Y
-    end
-
-    -- Apply size
-    if enabled then
-        head.Size = Vector3.new(targetHeadScale, head.OriginalY.Value, targetHeadScale)
-        head.Transparency = 0.5
-    else
-        head.Size = Vector3.new(1, head.OriginalY.Value, 1)
-        head.Transparency = 0
-        head.CanCollide = true
-    end
-end
-
-local function updateHeadCollision()
-    if not isHeadModEnabled then return end
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == localPlayer then continue end
-        local char = player.Character
-        if not char then continue end
-        local head = char:FindFirstChild("Head")
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local humanoid = char:FindFirstChild("Humanoid")
-        if not head or not humanoid or not hrp then continue end
-
-        -- Persistent collision + no climbing
-        local isStandingOnHead = false
-        local rayParam = RaycastParams.new()
-        rayParam.FilterDescendantsInstances = {char}
-        rayParam.FilterType = Enum.RaycastFilterType.Exclude
-
-        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -5, 0), rayParam)
-        if ray and ray.Instance == head then
-            isStandingOnHead = true
-        end
-
-        local lastJump = humanoid:GetAttribute("LastJumpTime") or 0
-        local timeSinceJump = tick() - lastJump
-
-        head.CanCollide = isStandingOnHead or (timeSinceJump > 0.15 and timeSinceJump < 0.30)
-    end
-end
-
-local function refreshPlayers()
-    for _, p in ipairs(cachedPlayers) do
-        applyHeadSize(p, isHeadModEnabled)
-    end
-end
-
--------------------------------------------------
--- SMART TACKLE REACH (NO FLING)
--------------------------------------------------
-local function updateTackleHitboxes()
-    if not tackleReachEnabled or not currentBall or not hrp then return end
-
-    for _, p in ipairs(cachedPlayers) do
-        local char = p.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if not root then continue end
-
-        local holdingBall = currentBall.Parent == char
-
-        if holdingBall then
-            if not tackleHitboxes[p] then
-                local hb = Instance.new("Part")
-                hb.Shape = Enum.PartType.Ball
-                hb.Size = tackleReachSize
-                hb.Anchored = true
-                hb.CanCollide = false
-                hb.Transparency = 0.5
-                hb.Material = Enum.Material.Neon
-                hb.Color = Color3.fromRGB(255,0,0)
-                hb.Parent = workspace
-                tackleHitboxes[p] = hb
-            end
-
-            tackleHitboxes[p].CFrame = root.CFrame
-        else
-            if tackleHitboxes[p] then
-                tackleHitboxes[p]:Destroy()
-                tackleHitboxes[p] = nil
-            end
-        end
-    end
-end
 
 -------------------------------------------------
 -- INPUT
 -------------------------------------------------
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
-
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        isPulling = true
-
         if autoSideTechEnabled and not isShiftLocked() then
-            local camLook = Vector3.new(camera.CFrame.LookVector.X,0,camera.CFrame.LookVector.Z).Unit
-            sideTechTargetLookVector = Vector3.new(-camLook.Z,0,camLook.X)
+            local camLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
+            sideTechTargetLookVector = Vector3.new(-camLook.Z, 0, camLook.X)
             isHoldingSideTech = true
         end
-
-    elseif i.KeyCode == autoRusherKey then
-        rusherHolding = true
     end
 end)
 
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
-        isPulling = false
         isHoldingSideTech = false
         sideTechTargetLookVector = nil
-    elseif i.KeyCode == autoRusherKey then
-        rusherHolding = false
     end
 end)
 
@@ -249,33 +86,21 @@ end)
 -- HEARTBEAT
 -------------------------------------------------
 RunService.Heartbeat:Connect(function(dt)
-    if not humanoid or not hrp then return end
+    if not hrp or not humanoid then return end
 
-    -- Auto Side Tech (animation-safe)
+    -- Gravity Lock
+    if workspace.Gravity ~= gravityVal then 
+        workspace.Gravity = gravityVal 
+    end
+
+    -- EXACT SIDE TECH EXECUTION
     if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() and not sideTechAnimPlaying then
         local vel = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
         hrp.AssemblyLinearVelocity = vel
     end
 
-    -- Noclip
-    if isNoclipEnabled then
-        for _, bp in ipairs(localPlayer.Character:GetDescendants()) do
-            if bp:IsA("BasePart") then
-                bp.CanCollide = false
-            end
-        end
-    end
-
-    -- Smooth Magnet (less blatant)
-    if isMagEnabled and isPulling and currentBall then
-        if not currentBall.Parent:FindFirstChildOfClass("Humanoid") then
-            local targetPos = currentBall.Position
-            hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(targetPos), magRange * 0.02)
-        end
-    end
-
-    -- Flight
+    -- FLIGHT
     if isFlying then
         humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         local move = Vector3.zero
@@ -283,31 +108,42 @@ RunService.Heartbeat:Connect(function(dt)
         if UIS:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
         if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
-
-        if move.Magnitude > 0 then
-            flyVelocity = flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt)
-        else
-            flyVelocity = flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
-        end
-
+        
+        flyVelocity = (move.Magnitude > 0) and flyVelocity:Lerp(move.Unit * flySpeed, flyAccel * dt) or flyVelocity:Lerp(Vector3.zero, flyFriction * dt)
         hrp.AssemblyLinearVelocity = flyVelocity
     end
 
-    -- Auto Rusher
-    if isAutoRusherEnabled and rusherHolding and currentBall then
-        local owner = currentBall.Parent
-        local thrp = owner and owner:FindFirstChild("HumanoidRootPart")
-        if thrp then
-            local dir = thrp.Position - hrp.Position
-            dir = Vector3.new(dir.X,0,dir.Z)
-            if dir.Magnitude > 0 then
-                humanoid:Move(dir.Unit * walkSpeed, false)
-            end
+    -- HEAD COLLISION LOGIC
+    local headTechActive = isHeadModEnabled and (tick() - lastJumpTime >= 0.15)
+    
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == localPlayer then continue end
+        local char = p.Character
+        local head = char and char:FindFirstChild("Head")
+        if not head then continue end
+
+        if not head:FindFirstChild("OrigSize") then
+            local v = Instance.new("Vector3Value", head); v.Name = "OrigSize"; v.Value = head.Size
+        end
+
+        local targetSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
+        if head.Size ~= targetSize then 
+            head.Size = targetSize
+            head.Transparency = headTechActive and 0.5 or 0
+        end
+
+        -- Collision
+        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0))
+        local standingOnHead = (ray and ray.Instance == head)
+        
+        if sideTechAnimPlaying or isHoldingSideTech then
+            head.CanCollide = false
+        elseif standingOnHead then
+            head.CanCollide = true
+        else
+            head.CanCollide = headTechActive and (humanoid:GetState() == Enum.HumanoidStateType.Freefall)
         end
     end
-
-    updateTackleHitboxes()
-    updateHeadCollision()
 end)
 
 -------------------------------------------------
@@ -315,41 +151,53 @@ end)
 -------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
-    LoadingTitle = "All Systems Online",
+    LoadingTitle = "Gravity & Side Tech Final",
     ConfigurationSaving = { Enabled = true }
 })
 
-local PhysicsTab = Window:CreateTab("Player Physics")
-local MagnetTab  = Window:CreateTab("Magnet")
-local HeadTab    = Window:CreateTab("Head Tech")
-local FlightTab  = Window:CreateTab("Flight")
-local RusherTab  = Window:CreateTab("Auto Rusher")
-local TackleTab  = Window:CreateTab("Tackle Reach")
+local MainTab = Window:CreateTab("Movement")
+local TechTab = Window:CreateTab("Head Tech")
 
-PhysicsTab:CreateSlider({Name="Gravity", Range={1,196.2}, Increment=1, CurrentValue=gravityVal, Callback=function(v) gravityVal=v workspace.Gravity=v end})
-PhysicsTab:CreateSlider({Name="WalkSpeed", Range={18,200}, Increment=1, CurrentValue=walkSpeed, Callback=function(v) walkSpeed=v if humanoid then humanoid.WalkSpeed=v end end})
-PhysicsTab:CreateToggle({Name="Noclip", Callback=function(v) isNoclipEnabled=v end})
+MainTab:CreateSlider({
+    Name = "WalkSpeed", 
+    Range = {18, 150}, 
+    Increment = 1, 
+    CurrentValue = 18, 
+    Callback = function(v) walkSpeed = v if humanoid then humanoid.WalkSpeed = v end end
+})
 
-MagnetTab:CreateToggle({Name="Enable Magnet", Callback=function(v) isMagEnabled=v end})
-MagnetTab:CreateSlider({Name="Pull Strength", Range={0.05,1}, Increment=0.05, CurrentValue=magRange, Callback=function(v) magRange=v end})
+MainTab:CreateSlider({
+    Name = "Gravity", 
+    Range = {0, 196.2}, 
+    Increment = 1, 
+    CurrentValue = 196.2, 
+    Callback = function(v) gravityVal = v end
+})
 
-HeadTab:CreateToggle({Name="Enable Head Size (DOWN)", Callback=function(v) isHeadModEnabled=v refreshPlayers() end})
-HeadTab:CreateSlider({Name="Head Size", Range={1,15}, Increment=0.5, CurrentValue=targetHeadScale, Callback=function(v) targetHeadScale=v refreshPlayers() end})
-HeadTab:CreateToggle({Name="Enable Head Boost (BETA)", Callback=function(v) isBounceEnabled=v end})
-HeadTab:CreateSlider({Name="Boost Power", Range={30,150}, Increment=5, CurrentValue=bouncePower, Callback=function(v) bouncePower=v end})
-HeadTab:CreateToggle({Name="Auto Side Tech (HOLD)", Callback=function(v) autoSideTechEnabled=v end})
+MainTab:CreateToggle({Name = "Enable Flight", Callback = function(v) isFlying = v end})
 
-FlightTab:CreateToggle({Name="Enable Flight", Callback=function(v) isFlying=v end})
-FlightTab:CreateSlider({Name="Flight Speed", Range={10,200}, Increment=5, CurrentValue=flySpeed, Callback=function(v) flySpeed=v end})
+MainTab:CreateSlider({
+    Name = "Flight Speed", 
+    Range = {10, 300}, 
+    Increment = 5, 
+    CurrentValue = 50, 
+    Callback = function(v) flySpeed = v end
+})
 
-RusherTab:CreateToggle({Name="Enable Auto Rusher", Callback=function(v) isAutoRusherEnabled=v end})
-RusherTab:CreateKeybind({Name="Rusher Key", CurrentKeybind="G", HoldToInteract=true, Callback=function(k) autoRusherKey=k end})
+TechTab:CreateToggle({Name = "Enable Delayed Head Size", Callback = function(v) isHeadModEnabled = v end})
 
-TackleTab:CreateToggle({Name="Enable Tackle Reach", Callback=function(v) tackleReachEnabled=v end})
-TackleTab:CreateSlider({Name="Reach Size", Range={4,20}, Increment=1, CurrentValue=8, Callback=function(v) tackleReachSize=Vector3.new(v,6,v) end})
+TechTab:CreateSlider({
+    Name = "Head Scale", 
+    Range = {1, 15}, 
+    Increment = 0.5, 
+    CurrentValue = 5, 
+    Callback = function(v) targetHeadScale = v end
+})
+
+TechTab:CreateToggle({Name = "Auto Side Tech (HOLD M1)", Callback = function(v) autoSideTechEnabled = v end})
 
 Rayfield:Notify({
-    Title = "Loaded",
-    Content = "Smooth Magnet + Persistent Head Collision enabled. Animation-safe Side Tech active.",
+    Title = "Gravity Restored",
+    Content = "The gravity slider is back and locked to your choice.",
     Duration = 5
 })
