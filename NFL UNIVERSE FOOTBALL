@@ -214,7 +214,7 @@ MainTab:CreateSlider({Name="Flight Speed", Range={10,300}, Increment=5, CurrentV
 
 MainTab:CreateSection("Pull Vector Options")
 MainTab:CreateToggle({Name="Enable Pull Vector", Callback=function(v) pullVectorEnabled=v end})
-MainTab:CreateSlider({Name="Pull Vector Speed", Range={10, 150}, Increment=5, CurrentValue=45, Callback=function(v) pullSpeed=v end})
+MainTab:CreateSlider({Name="Pull Vector Speed", Range={10, 400}, Increment=5, CurrentValue=45, Callback=function(v) pullSpeed=v end})
 
 TechTab:CreateToggle({Name="Enable Delayed Head Size", Callback=function(v) isHeadModEnabled=v end})
 TechTab:CreateSlider({Name="Head Scale", Range={1,15}, Increment=0.5, CurrentValue=5, Callback=function(v) targetHeadScale=v end})
