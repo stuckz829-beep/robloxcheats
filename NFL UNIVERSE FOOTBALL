@@ -112,7 +112,7 @@ RunService.Heartbeat:Connect(function(dt)
         hrp.AssemblyLinearVelocity = flyVelocity
     end
 
-    -- HEAD COLLISION (LAG OPTIMIZED)
+    -- HEAD COLLISION (GLOBAL SERVER SCAN)
     local headTechActive = isHeadModEnabled and (tick() - lastJumpTime >= 0.15)
     
     for _, p in ipairs(Players:GetPlayers()) do
@@ -121,19 +121,14 @@ RunService.Heartbeat:Connect(function(dt)
         local head = char and char:FindFirstChild("Head")
         if not head then continue end
 
-        -- Only run logic if player is close enough to matter (25 studs)
-        local distance = (hrp.Position - head.Position).Magnitude
-        if distance > 25 then 
-            -- Reset distant players to normal to save resources
-            if head.Transparency ~= 0 then head.Transparency = 0 end
-            continue 
-        end
-
+        -- Instantly track and save original size for any player/new clone
         if not head:FindFirstChild("OrigSize") then
-            local v = Instance.new("Vector3Value", head); v.Name = "OrigSize"; v.Value = head.Size
+            local v = Instance.new("Vector3Value", head)
+            v.Name = "OrigSize"
+            v.Value = head.Size
         end
 
-        -- Scale Update (Only updates if necessary to prevent property-change lag)
+        -- Scale Update (Global - No distance limits)
         local targetSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
         if head.Size ~= targetSize then 
             head.Size = targetSize
@@ -185,6 +180,6 @@ TechTab:CreateToggle({Name="Auto Side Tech (HOLD M1)", Callback=function(v) auto
 
 Rayfield:Notify({
     Title = "Performance Update",
-    Content = "Lag spikes removed. Anti-Bounce logic preserved.",
+    Content = "Global Scaling Active. Missed players and late-joiners fixed.",
     Duration = 5
 })
