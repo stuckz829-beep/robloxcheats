@@ -32,6 +32,11 @@ local isHeadModEnabled = false
 local targetHeadScale = 5
 local lastJumpTime = 0
 
+-- Pull Vector
+local pullVectorEnabled = false
+local pullSpeed = 45     -- Velocity speed applied during pull
+local isHoldingM1 = false  -- Tracks if MouseButton1 is strictly held down
+
 local humanoid, hrp
 
 -------------------------------------------------
@@ -39,6 +44,21 @@ local humanoid, hrp
 -------------------------------------------------
 local function isShiftLocked()
     return UIS.MouseBehavior == Enum.MouseBehavior.LockCenter
+end
+
+local function findFootball()
+    local char = localPlayer.Character
+    if char and char:FindFirstChild("Football") then
+        return char:FindFirstChild("Football")
+    end
+    
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and p.Character:FindFirstChild("Football") then
+            return p.Character:FindFirstChild("Football")
+        end
+    end
+    
+    return workspace:FindFirstChild("Football", true)
 end
 
 local function hookChar(char)
@@ -69,6 +89,8 @@ rayParam.FilterType = Enum.RaycastFilterType.Exclude
 UIS.InputBegan:Connect(function(i, gp)
     if gp then return end
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        isHoldingM1 = true
+        
         if autoSideTechEnabled and not isShiftLocked() then
             local camLook = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z).Unit
             sideTechTargetLookVector = Vector3.new(-camLook.Z, 0, camLook.X)
@@ -79,6 +101,7 @@ end)
 
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        isHoldingM1 = false
         isHoldingSideTech = false
         sideTechTargetLookVector = nil
     end
@@ -98,6 +121,20 @@ RunService.Heartbeat:Connect(function(dt)
         local vel = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
         hrp.AssemblyLinearVelocity = vel
+    end
+
+    -- Pull Vector Mechanics (Only triggers when enabled AND holding M1)
+    if pullVectorEnabled and isHoldingM1 and not isFlying then
+        local ball = findFootball()
+        local ballPart = ball and (ball:IsA("BasePart") and ball or ball:FindFirstChildWhichIsA("BasePart", true))
+        
+        if ballPart then
+            local direction = (ballPart.Position - hrp.Position)
+            if direction.Magnitude > 2 then
+                -- Direct positional velocity shift; keeps your orientation/rotation perfectly intact
+                hrp.AssemblyLinearVelocity = direction.Unit * pullSpeed
+            end
+        end
     end
 
     -- Flight
@@ -121,14 +158,12 @@ RunService.Heartbeat:Connect(function(dt)
         local head = char and char:FindFirstChild("Head")
         if not head then continue end
 
-        -- Instantly track and save original size for any player/new clone
         if not head:FindFirstChild("OrigSize") then
             local v = Instance.new("Vector3Value", head)
             v.Name = "OrigSize"
             v.Value = head.Size
         end
 
-        -- Scale Update (Global - No distance limits)
         local targetSize = headTechActive and Vector3.new(targetHeadScale, head.OrigSize.Value.Y, targetHeadScale) or head.OrigSize.Value
         if head.Size ~= targetSize then 
             head.Size = targetSize
@@ -169,10 +204,17 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Movement")
 local TechTab = Window:CreateTab("Head Tech")
 
+MainTab:CreateSection("Basic Movement")
 MainTab:CreateSlider({Name="WalkSpeed", Range={18,150}, Increment=1, CurrentValue=18, Callback=function(v) walkSpeed=v if humanoid then humanoid.WalkSpeed=v end end})
 MainTab:CreateSlider({Name="Gravity", Range={0,196.2}, Increment=1, CurrentValue=196.2, Callback=function(v) gravityVal=v end})
+
+MainTab:CreateSection("Flight Tech")
 MainTab:CreateToggle({Name="Enable Flight", Callback=function(v) isFlying=v end})
 MainTab:CreateSlider({Name="Flight Speed", Range={10,300}, Increment=5, CurrentValue=50, Callback=function(v) flySpeed=v end})
+
+MainTab:CreateSection("Pull Vector Options")
+MainTab:CreateToggle({Name="Enable Pull Vector", Callback=function(v) pullVectorEnabled=v end})
+MainTab:CreateSlider({Name="Pull Vector Speed", Range={10, 150}, Increment=5, CurrentValue=45, Callback=function(v) pullSpeed=v end})
 
 TechTab:CreateToggle({Name="Enable Delayed Head Size", Callback=function(v) isHeadModEnabled=v end})
 TechTab:CreateSlider({Name="Head Scale", Range={1,15}, Increment=0.5, CurrentValue=5, Callback=function(v) targetHeadScale=v end})
@@ -180,6 +222,6 @@ TechTab:CreateToggle({Name="Auto Side Tech (HOLD M1)", Callback=function(v) auto
 
 Rayfield:Notify({
     Title = "Performance Update",
-    Content = "Global Scaling Active. Missed players and late-joiners fixed.",
+    Content = "Pull Vector linked strictly to MB1 Hold. Anti-spin safeguards active.",
     Duration = 5
 })
