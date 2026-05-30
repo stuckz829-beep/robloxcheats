@@ -123,15 +123,21 @@ RunService.Heartbeat:Connect(function(dt)
         hrp.AssemblyLinearVelocity = vel
     end
 
-    -- Pull Vector Mechanics (Only triggers when enabled AND holding M1)
+    -- Pull Vector Mechanics (With Catch Detection Fix)
     if pullVectorEnabled and isHoldingM1 and not isFlying then
         local ball = findFootball()
         local ballPart = ball and (ball:IsA("BasePart") and ball or ball:FindFirstChildWhichIsA("BasePart", true))
         
         if ballPart then
             local direction = (ballPart.Position - hrp.Position)
-            if direction.Magnitude > 2 then
-                -- Direct positional velocity shift; keeps your orientation/rotation perfectly intact
+            local currentDistance = direction.Magnitude
+            
+            -- CATCH FIX: If you are closer than 4.5 studs, KILL velocity instantly 
+            -- This allows your hitbox to cleanly interact with the ball instead of phasing through it.
+            if currentDistance <= 4.5 then
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            elseif currentDistance > 2 then
+                -- Direct positional velocity shift when out of catch range
                 hrp.AssemblyLinearVelocity = direction.Unit * pullSpeed
             end
         end
@@ -214,7 +220,7 @@ MainTab:CreateSlider({Name="Flight Speed", Range={10,300}, Increment=5, CurrentV
 
 MainTab:CreateSection("Pull Vector Options")
 MainTab:CreateToggle({Name="Enable Pull Vector", Callback=function(v) pullVectorEnabled=v end})
-MainTab:CreateSlider({Name="Pull Vector Speed", Range={10, 400}, Increment=5, CurrentValue=45, Callback=function(v) pullSpeed=v end})
+MainTab:CreateSlider({Name="Pull Vector Speed", Range={10, 150}, Increment=5, CurrentValue=45, Callback=function(v) pullSpeed=v end})
 
 TechTab:CreateToggle({Name="Enable Delayed Head Size", Callback=function(v) isHeadModEnabled=v end})
 TechTab:CreateSlider({Name="Head Scale", Range={1,15}, Increment=0.5, CurrentValue=5, Callback=function(v) targetHeadScale=v end})
@@ -222,6 +228,6 @@ TechTab:CreateToggle({Name="Auto Side Tech (HOLD M1)", Callback=function(v) auto
 
 Rayfield:Notify({
     Title = "Performance Update",
-    Content = "Pull Vector linked strictly to MB1 Hold. Anti-spin safeguards active.",
+    Content = "Catch physics anti-clip protection added.",
     Duration = 5
 })
