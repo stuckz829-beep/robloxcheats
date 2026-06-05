@@ -1,4 +1,4 @@
--- HackUI_Rayfield.lua (v2)
+-- HackUI_Rayfield.lua (v2 with Aimbot/FOV)
 -- Place in StarterPlayerScripts / Executor Environment
 -- For Educational Purposes Only
 
@@ -36,6 +36,14 @@ local CFG = {
         FlyEnabled   = false,
         FlySpeed     = 50,
     },
+    -- NEW CONFIG FOR AIMBOT
+    Aim = {
+        Enabled      = false,
+        FOV          = 150,     -- Radius in pixels
+        Smoothing    = 0.1,     -- Lower = smoother, Higher = snappier (range 0 to 1)
+        ShowFOV      = false,
+        FOVColor     = Color3.fromRGB(255, 255, 255),
+    }
 }
 
 local SKELETON_PAIRS = {
@@ -68,6 +76,23 @@ DrawFrame.Size              = UDim2.new(1, 0, 1, 0)
 DrawFrame.BackgroundTransparency = 1
 DrawFrame.Parent            = ScreenGui
 
+-- NEW UI ELEMENT: Visual FOV UI Ring using UIStroke on a round Frame
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = false
+FOVCircle.Parent = ScreenGui
+
+local FOVCorner = Instance.new("UICorner")
+FOVCorner.CornerRadius = UDim.new(1, 0)
+FOVCorner.Parent = FOVCircle
+
+local FOVStroke = Instance.new("UIStroke")
+FOVStroke.Thickness = 1
+FOVStroke.Color = CFG.Aim.FOVColor
+FOVStroke.Parent = FOVCircle
+
 -- ============================================================
 -- INITIALIZE RAYFIELD
 -- ============================================================
@@ -84,6 +109,7 @@ local Window = Rayfield:CreateWindow({
 })
 
 local ESPTab = Window:CreateTab("ESP / Tracker", 4483362458)
+local AimTab = Window:CreateTab("Aimbot", 4483362458) -- NEW TAB
 local MoveTab = Window:CreateTab("Movement", 4483362458)
 
 -- ============================================================
@@ -145,6 +171,41 @@ ESPTab:CreateSlider({
     Increment = 50,
     ValueName = "Studs",
     Callback = function(Value) CFG.ESP.MaxDist = Value end,
+})
+
+-- ============================================================
+-- UI ELEMENTS: NEW AIMBOT TAB
+-- ============================================================
+AimTab:CreateToggle({
+    Name = "Enable Camera Lock",
+    CurrentValue = CFG.Aim.Enabled,
+    Callback = function(Value) CFG.Aim.Enabled = Value end,
+})
+
+AimTab:CreateToggle({
+    Name = "Show FOV Circle",
+    CurrentValue = CFG.Aim.ShowFOV,
+    Callback = function(Value) CFG.Aim.ShowFOV = Value end,
+})
+
+AimTab:CreateSlider({
+    Name = "FOV Radius",
+    Min = 30,
+    Max = 600,
+    CurrentValue = CFG.Aim.FOV,
+    Increment = 5,
+    ValueName = "Pixels",
+    Callback = function(Value) CFG.Aim.FOV = Value end,
+})
+
+AimTab:CreateSlider({
+    Name = "Smoothing Speed",
+    Min = 1,
+    Max = 100,
+    CurrentValue = math.floor(CFG.Aim.Smoothing * 100),
+    Increment = 1,
+    ValueName = "%",
+    Callback = function(Value) CFG.Aim.Smoothing = Value / 100 end,
 })
 
 -- ============================================================
@@ -333,6 +394,48 @@ local function DrawLine(p1: Vector2, p2: Vector2, color: Color3, thickness: numb
 end
 
 -- ============================================================
+-- TARGET ACQUISITION LOGIC (NEW)
+-- ============================================================
+local function GetClosestPlayerToMouse()
+    local target = nil
+    local maxDistance = CFG.Aim.FOV
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+
+        -- Team check configuration match
+        if CFG.ESP.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then 
+            continue 
+        end
+
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+
+        -- Ensure they exist, are alive, and within configured distance limits
+        if root and hum and hum.Health > 0 then
+            local pRootPos = root.Position
+            local localChar = LocalPlayer.Character
+            local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+            local distFromMe = localRoot and (pRootPos - localRoot.Position).Magnitude or 0
+            
+            if distFromMe <= CFG.ESP.MaxDist then
+                local screenPos, onScreen = WorldToScreen(pRootPos)
+                if onScreen then
+                    local distanceToMouse = (screenPos - mousePos).Magnitude
+                    if distanceToMouse < maxDistance then
+                        maxDistance = distanceToMouse
+                        target = root
+                    end
+                end
+            end
+        end
+    end
+    return target
+end
+
+-- ============================================================
 -- TRACKER DATA LAYER
 -- ============================================================
 local ESPStore = {}
@@ -345,7 +448,7 @@ local function BuildESP(player)
     hl.OutlineTransparency = 0
     hl.OutlineColor        = CFG.ESP.EnemyColor
     hl.FillColor           = CFG.ESP.EnemyColor
-    hl.Enabled             = false
+    hl.Enabled              = false
     hl.Parent              = ScreenGui
 
     local bb = Instance.new("BillboardGui")
@@ -416,6 +519,25 @@ RunService.Heartbeat:Connect(function()
     lineUsed = 0
     local vpSize = Camera.ViewportSize
     local tracerOrigin = Vector2.new(vpSize.X * 0.5, vpSize.Y)
+
+    -- NEW: Update visual FOV circle position and dimensions
+    if CFG.Aim.ShowFOV and CFG.Aim.Enabled then
+        local mPos = UserInputService:GetMouseLocation()
+        FOVCircle.Position = UDim2.fromOffset(mPos.X, mPos.Y)
+        FOVCircle.Size = UDim2.fromOffset(CFG.Aim.FOV * 2, CFG.Aim.FOV * 2)
+        FOVCircle.Visible = true
+    else
+        FOVCircle.Visible = false
+    end
+
+    -- NEW: Smoothly Lerp Camera toward Closest Target inside FOV
+    if CFG.Aim.Enabled then
+        local currentTargetRoot = GetClosestPlayerToMouse()
+        if currentTargetRoot then
+            local targetLookCFrame = CFrame.lookAt(Camera.CFrame.Position, currentTargetRoot.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(targetLookCFrame, CFG.Aim.Smoothing)
+        end
+    end
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
@@ -490,7 +612,7 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    HideExtraLines()
+    hideExtraLines()
 end)
 
 -- Character Spawn Safety Management
