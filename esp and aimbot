@@ -1,14 +1,20 @@
--- HackUI_Rayfield.lua (v2.1 Patched)
--- Requires an Executor Environment supporting HttpGet
+-- HackUI_Rayfield.lua (v2.2 Patched with Config Manager)
+-- Requires an Executor Environment supporting HttpGet & File Functions (writefile, readfile, etc.)
 -- For Educational Purposes Only
 
 local Players         = game:GetService("Players")
 local RunService      = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local HttpService     = game:GetService("HttpService")
 
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 local Camera         = workspace.CurrentCamera
+
+-- Make folder if it doesn't exist (Supported by mostly all executors)
+if makefolder then
+    makefolder("Phantom_Configs")
+end
 
 -- ============================================================
 -- CONFIG & STATE
@@ -106,34 +112,178 @@ local Window = Rayfield:CreateWindow({
 local ESPTab = Window:CreateTab("ESP / Tracker", 4483362458)
 local AimTab = Window:CreateTab("Aimbot", 4483362458) 
 local MoveTab = Window:CreateTab("Movement", 4483362458)
+local ConfigTab = Window:CreateTab("Configs", 4483362458) -- NEW TAB
 
 -- ============================================================
--- UI ELEMENTS
+-- UI ELEMENTS POINTERS (Needed for runtime configuration updating)
 -- ============================================================
-ESPTab:CreateToggle({ Name = "Enable ESP", CurrentValue = CFG.ESP.Enabled, Callback = function(V) CFG.ESP.Enabled = V end })
-ESPTab:CreateToggle({ Name = "Names", CurrentValue = CFG.ESP.Names, Callback = function(V) CFG.ESP.Names = V end })
-ESPTab:CreateToggle({ Name = "Boxes", CurrentValue = CFG.ESP.Boxes, Callback = function(V) CFG.ESP.Boxes = V end })
-ESPTab:CreateToggle({ Name = "Distance", CurrentValue = CFG.ESP.Distance, Callback = function(V) CFG.ESP.Distance = V end })
-ESPTab:CreateToggle({ Name = "Skeleton", CurrentValue = CFG.ESP.Skeleton, Callback = function(V) CFG.ESP.Skeleton = V end })
-ESPTab:CreateToggle({ Name = "Chams", CurrentValue = CFG.ESP.Chams, Callback = function(V) CFG.ESP.Chams = V end })
-ESPTab:CreateToggle({ Name = "Tracers", CurrentValue = CFG.ESP.Tracers, Callback = function(V) CFG.ESP.Tracers = V end })
-ESPTab:CreateToggle({ Name = "Team Check", CurrentValue = CFG.ESP.TeamCheck, Callback = function(V) CFG.ESP.TeamCheck = V end })
-ESPTab:CreateSlider({ Name = "Max Distance", Min = 50, Max = 2000, CurrentValue = CFG.ESP.MaxDist, Increment = 50, ValueName = "Studs", Callback = function(V) CFG.ESP.MaxDist = V end })
+local UI_Elements = {}
 
-AimTab:CreateToggle({ Name = "Enable Camera Lock", CurrentValue = CFG.Aim.Enabled, Callback = function(V) CFG.Aim.Enabled = V end })
-AimTab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = CFG.Aim.ShowFOV, Callback = function(V) CFG.Aim.ShowFOV = V end })
-AimTab:CreateSlider({ Name = "FOV Radius", Min = 30, Max = 600, CurrentValue = CFG.Aim.FOV, Increment = 5, ValueName = "Pixels", Callback = function(V) CFG.Aim.FOV = V end })
-AimTab:CreateSlider({ Name = "Smoothing Speed", Min = 1, Max = 100, CurrentValue = math.floor(CFG.Aim.Smoothing * 100), Increment = 1, ValueName = "%", Callback = function(V) CFG.Aim.Smoothing = V / 100 end })
+UI_Elements.ESP_Enabled = ESPTab:CreateToggle({ Name = "Enable ESP", CurrentValue = CFG.ESP.Enabled, Callback = function(V) CFG.ESP.Enabled = V end })
+UI_Elements.ESP_Names = ESPTab:CreateToggle({ Name = "Names", CurrentValue = CFG.ESP.Names, Callback = function(V) CFG.ESP.Names = V end })
+UI_Elements.ESP_Boxes = ESPTab:CreateToggle({ Name = "Boxes", CurrentValue = CFG.ESP.Boxes, Callback = function(V) CFG.ESP.Boxes = V end })
+UI_Elements.ESP_Distance = ESPTab:CreateToggle({ Name = "Distance", CurrentValue = CFG.ESP.Distance, Callback = function(V) CFG.ESP.Distance = V end })
+UI_Elements.ESP_Skeleton = ESPTab:CreateToggle({ Name = "Skeleton", CurrentValue = CFG.ESP.Skeleton, Callback = function(V) CFG.ESP.Skeleton = V end })
+UI_Elements.ESP_Chams = ESPTab:CreateToggle({ Name = "Chams", CurrentValue = CFG.ESP.Chams, Callback = function(V) CFG.ESP.Chams = V end })
+UI_Elements.ESP_Tracers = ESPTab:CreateToggle({ Name = "Tracers", CurrentValue = CFG.ESP.Tracers, Callback = function(V) CFG.ESP.Tracers = V end })
+UI_Elements.ESP_TeamCheck = ESPTab:CreateToggle({ Name = "Team Check", CurrentValue = CFG.ESP.TeamCheck, Callback = function(V) CFG.ESP.TeamCheck = V end })
+UI_Elements.ESP_MaxDist = ESPTab:CreateSlider({ Name = "Max Distance", Min = 50, Max = 2000, CurrentValue = CFG.ESP.MaxDist, Increment = 50, ValueName = "Studs", Callback = function(V) CFG.ESP.MaxDist = V end })
+
+UI_Elements.Aim_Enabled = AimTab:CreateToggle({ Name = "Enable Camera Lock", CurrentValue = CFG.Aim.Enabled, Callback = function(V) CFG.Aim.Enabled = V end })
+UI_Elements.Aim_ShowFOV = AimTab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = CFG.Aim.ShowFOV, Callback = function(V) CFG.Aim.ShowFOV = V end })
+UI_Elements.Aim_FOV = AimTab:CreateSlider({ Name = "FOV Radius", Min = 30, Max = 600, CurrentValue = CFG.Aim.FOV, Increment = 5, ValueName = "Pixels", Callback = function(V) CFG.Aim.FOV = V end })
+UI_Elements.Aim_Smoothing = AimTab:CreateSlider({ Name = "Smoothing Speed", Min = 1, Max = 100, CurrentValue = math.floor(CFG.Aim.Smoothing * 100), Increment = 1, ValueName = "%", Callback = function(V) CFG.Aim.Smoothing = V / 100 end })
 
 MoveTab:CreateSection("Speed & Jump")
-MoveTab:CreateToggle({ Name = "Speed Hack", CurrentValue = CFG.Move.SpeedEnabled, Callback = function(V) CFG.Move.SpeedEnabled = V end })
-MoveTab:CreateSlider({ Name = "Walk Speed", Min = 16, Max = 300, CurrentValue = CFG.Move.SpeedVal, Increment = 1, ValueName = "Speed", Callback = function(V) CFG.Move.SpeedVal = V end })
-MoveTab:CreateToggle({ Name = "Jump Hack", CurrentValue = CFG.Move.JumpEnabled, Callback = function(V) CFG.Move.JumpEnabled = V end })
-MoveTab:CreateSlider({ Name = "Jump Power", Min = 50, Max = 500, CurrentValue = CFG.Move.JumpVal, Increment = 1, ValueName = "Power", Callback = function(V) CFG.Move.JumpVal = V end })
+UI_Elements.Move_SpeedEnabled = MoveTab:CreateToggle({ Name = "Speed Hack", CurrentValue = CFG.Move.SpeedEnabled, Callback = function(V) CFG.Move.SpeedEnabled = V end })
+UI_Elements.Move_SpeedVal = MoveTab:CreateSlider({ Name = "Walk Speed", Min = 16, Max = 300, CurrentValue = CFG.Move.SpeedVal, Increment = 1, ValueName = "Speed", Callback = function(V) CFG.Move.SpeedVal = V end })
+UI_Elements.Move_JumpEnabled = MoveTab:CreateToggle({ Name = "Jump Hack", CurrentValue = CFG.Move.JumpEnabled, Callback = function(V) CFG.Move.JumpEnabled = V end })
+UI_Elements.Move_JumpVal = MoveTab:CreateSlider({ Name = "Jump Power", Min = 50, Max = 500, CurrentValue = CFG.Move.JumpVal, Increment = 1, ValueName = "Power", Callback = function(V) CFG.Move.JumpVal = V end })
 
 MoveTab:CreateSection("Flight")
-MoveTab:CreateToggle({ Name = "Fly Enabled (Press F)", CurrentValue = CFG.Move.FlyEnabled, Callback = function(V) CFG.Move.FlyEnabled = V end })
-MoveTab:CreateSlider({ Name = "Fly Speed", Min = 10, Max = 300, CurrentValue = CFG.Move.FlySpeed, Increment = 5, ValueName = "Speed", Callback = function(V) CFG.Move.FlySpeed = V end })
+UI_Elements.Move_FlyEnabled = MoveTab:CreateToggle({ Name = "Fly Enabled (Press F)", CurrentValue = CFG.Move.FlyEnabled, Callback = function(V) CFG.Move.FlyEnabled = V end })
+UI_Elements.Move_FlySpeed = MoveTab:CreateSlider({ Name = "Fly Speed", Min = 10, Max = 300, CurrentValue = CFG.Move.FlySpeed, Increment = 5, ValueName = "Speed", Callback = function(V) CFG.Move.FlySpeed = V end })
+
+-- ============================================================
+-- CONFIGURATION MANAGER SYSTEM LOGIC
+-- ============================================================
+local selectedConfigName = ""
+local configDropdown = nil
+
+-- Serializes color items out safely for JSON operations
+local function formatConfigForSaving(configTable)
+    local copy = HttpService:JSONDecode(HttpService:JSONEncode(configTable))
+    -- Convert Color3 objects manually into serializable arrays
+    copy.ESP.EnemyColor = {configTable.ESP.EnemyColor.R, configTable.ESP.EnemyColor.G, configTable.ESP.EnemyColor.B}
+    copy.ESP.FriendColor = {configTable.ESP.FriendColor.R, configTable.ESP.FriendColor.G, configTable.ESP.FriendColor.B}
+    copy.ESP.NameColor = {configTable.ESP.NameColor.R, configTable.ESP.NameColor.G, configTable.ESP.NameColor.B}
+    copy.Aim.FOVColor = {configTable.Aim.FOVColor.R, configTable.Aim.FOVColor.G, configTable.Aim.FOVColor.B}
+    return HttpService:JSONEncode(copy)
+end
+
+-- Re-imports data arrays back to physical active working states
+local function parseLoadedConfigData(jsonString)
+    local data = HttpService:JSONDecode(jsonString)
+    data.ESP.EnemyColor = Color3.new(data.ESP.EnemyColor[1], data.ESP.EnemyColor[2], data.ESP.EnemyColor[3])
+    data.ESP.FriendColor = Color3.new(data.ESP.FriendColor[1], data.ESP.FriendColor[2], data.ESP.FriendColor[3])
+    data.ESP.NameColor = Color3.new(data.ESP.NameColor[1], data.ESP.NameColor[2], data.ESP.NameColor[3])
+    data.Aim.FOVColor = Color3.new(data.Aim.FOVColor[1], data.Aim.FOVColor[2], data.Aim.FOVColor[3])
+    return data
+end
+
+local function updateUIFromTable(targetTable)
+    UI_Elements.ESP_Enabled:Set(targetTable.ESP.Enabled)
+    UI_Elements.ESP_Names:Set(targetTable.ESP.Names)
+    UI_Elements.ESP_Boxes:Set(targetTable.ESP.Boxes)
+    UI_Elements.ESP_Distance:Set(targetTable.ESP.Distance)
+    UI_Elements.ESP_Skeleton:Set(targetTable.ESP.Skeleton)
+    UI_Elements.ESP_Chams:Set(targetTable.ESP.Chams)
+    UI_Elements.ESP_Tracers:Set(targetTable.ESP.Tracers)
+    UI_Elements.ESP_TeamCheck:Set(targetTable.ESP.TeamCheck)
+    UI_Elements.ESP_MaxDist:Set(targetTable.ESP.MaxDist)
+    
+    UI_Elements.Aim_Enabled:Set(targetTable.Aim.Enabled)
+    UI_Elements.Aim_ShowFOV:Set(targetTable.Aim.ShowFOV)
+    UI_Elements.Aim_FOV:Set(targetTable.Aim.FOV)
+    UI_Elements.Aim_Smoothing:Set(math.floor(targetTable.Aim.Smoothing * 100))
+    
+    UI_Elements.Move_SpeedEnabled:Set(targetTable.Move.SpeedEnabled)
+    UI_Elements.Move_SpeedVal:Set(targetTable.Move.SpeedVal)
+    UI_Elements.Move_JumpEnabled:Set(targetTable.Move.JumpEnabled)
+    UI_Elements.Move_JumpVal:Set(targetTable.Move.JumpVal)
+    UI_Elements.Move_FlyEnabled:Set(targetTable.Move.FlyEnabled)
+    UI_Elements.Move_FlySpeed:Set(targetTable.Move.FlySpeed)
+end
+
+local function fetchSavedConfigsList()
+    local list = {}
+    if not listfiles then return {"Default"} end
+    
+    for _, path in ipairs(listfiles("Phantom_Configs")) do
+        local name = path:match("([^\\/]+)%.json$")
+        if name then
+            table.insert(list, name)
+        end
+    end
+    if #list == 0 then table.insert(list, "No Configs Found") end
+    return list
+end
+
+-- Build Configuration UI Interactions
+ConfigTab:CreateSection("Manage Presets")
+
+ConfigTab:CreateInput({
+    Name = "New Config Name",
+    PlaceholderText = "Type filename...",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        selectedConfigName = Text
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Save / Create Config",
+    Callback = function()
+        if selectedConfigName == "" or selectedConfigName == "No Configs Found" then 
+            Rayfield:Notify({Title = "Error", Content = "Please enter a valid config name first!", Duration = 3})
+            return 
+        end
+        if writefile then
+            local formattedStr = formatConfigForSaving(CFG)
+            writefile("Phantom_Configs/" .. selectedConfigName .. ".json", formattedStr)
+            Rayfield:Notify({Title = "Success", Content = "Saved config: " .. selectedConfigName, Duration = 3})
+            if configDropdown then
+                configDropdown:Refresh(fetchSavedConfigsList(), true)
+            end
+        else
+            Rayfield:Notify({Title = "Error", Content = "Your executor does not support saving files.", Duration = 4})
+        end
+    end,
+})
+
+configDropdown = ConfigTab:CreateDropdown({
+    Name = "Select Saved Config",
+    Options = fetchSavedConfigsList(),
+    CurrentOption = {""},
+    MultipleOptions = false,
+    Callback = function(Options)
+        selectedConfigName = Options[1] or ""
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Load Selected Config",
+    Callback = function()
+        local fileLoc = "Phantom_Configs/" .. selectedConfigName .. ".json"
+        if readfile and isfile and isfile(fileLoc) then
+            local rawData = readfile(fileLoc)
+            local success, parsed = pcall(function() return parseLoadedConfigData(rawData) end)
+            if success and parsed then
+                CFG = parsed
+                updateUIFromTable(CFG)
+                Rayfield:Notify({Title = "Loaded", Content = "Applied data from " .. selectedConfigName, Duration = 3})
+            else
+                Rayfield:Notify({Title = "Error", Content = "Corrupted target structure schema.", Duration = 4})
+            end
+        else
+            Rayfield:Notify({Title = "Not Found", Content = "Target data file does not exist.", Duration = 3})
+        end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Overwrite Selected Config",
+    Callback = function()
+        local fileLoc = "Phantom_Configs/" .. selectedConfigName .. ".json"
+        if writefile and isfile and isfile(fileLoc) then
+            local formattedStr = formatConfigForSaving(CFG)
+            writefile(fileLoc, formattedStr)
+            Rayfield:Notify({Title = "Updated", Content = "Overwrote preset configuration file: " .. selectedConfigName, Duration = 3})
+        else
+            Rayfield:Notify({Title = "Error", Content = "Select an existing valid file parameters option first.", Duration = 3})
+        end
+    end,
+})
 
 -- ============================================================
 -- SYSTEMS LOGIC
@@ -340,7 +490,6 @@ RunService.Heartbeat:Connect(function()
     if localChar then
         local hum = localChar:FindFirstChildOfClass("Humanoid")
         if hum then
-            -- Safe Roblox Character Properties overrides
             if CFG.Move.SpeedEnabled then 
                 hum.WalkSpeed = CFG.Move.SpeedVal 
             else
@@ -440,7 +589,7 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    HideExtraLines() -- Fixed case sensitivity crash
+    HideExtraLines()
 end)
 
 LocalPlayer.CharacterAdded:Connect(function(char)
