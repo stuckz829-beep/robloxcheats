@@ -1,5 +1,5 @@
--- HackUI_Rayfield.lua (v2 with Aimbot/FOV)
--- Place in StarterPlayerScripts / Executor Environment
+-- HackUI_Rayfield.lua (v2.1 Patched)
+-- Requires an Executor Environment supporting HttpGet
 -- For Educational Purposes Only
 
 local Players         = game:GetService("Players")
@@ -36,11 +36,10 @@ local CFG = {
         FlyEnabled   = false,
         FlySpeed     = 50,
     },
-    -- NEW CONFIG FOR AIMBOT
     Aim = {
         Enabled      = false,
-        FOV          = 150,     -- Radius in pixels
-        Smoothing    = 0.1,     -- Lower = smoother, Higher = snappier (range 0 to 1)
+        FOV          = 150,
+        Smoothing    = 0.1,
         ShowFOV      = false,
         FOVColor     = Color3.fromRGB(255, 255, 255),
     }
@@ -63,7 +62,6 @@ local SKELETON_PAIRS = {
     {"RightLowerLeg","RightFoot"},
 }
 
--- ScreenGui for custom Drawing Layer (retains the original line rendering system)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name          = "Rayfield_DrawOverlay"
 ScreenGui.ResetOnSpawn  = false
@@ -76,7 +74,6 @@ DrawFrame.Size              = UDim2.new(1, 0, 1, 0)
 DrawFrame.BackgroundTransparency = 1
 DrawFrame.Parent            = ScreenGui
 
--- NEW UI ELEMENT: Visual FOV UI Ring using UIStroke on a round Frame
 local FOVCircle = Instance.new("Frame")
 FOVCircle.Name = "FOVCircle"
 FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -102,202 +99,55 @@ local Window = Rayfield:CreateWindow({
     Name = "⬡ PHANTOM v2",
     LoadingTitle = "Phantom Interface",
     LoadingSubtitle = "by Educational Scripting",
-    ConfigurationSaving = {
-        Enabled = false
-    },
+    ConfigurationSaving = { Enabled = false },
     KeySystem = false
 })
 
 local ESPTab = Window:CreateTab("ESP / Tracker", 4483362458)
-local AimTab = Window:CreateTab("Aimbot", 4483362458) -- NEW TAB
+local AimTab = Window:CreateTab("Aimbot", 4483362458) 
 local MoveTab = Window:CreateTab("Movement", 4483362458)
 
 -- ============================================================
--- UI ELEMENTS: ESP TAB
+-- UI ELEMENTS
 -- ============================================================
-ESPTab:CreateToggle({
-    Name = "Enable ESP",
-    CurrentValue = CFG.ESP.Enabled,
-    Callback = function(Value) CFG.ESP.Enabled = Value end,
-})
+ESPTab:CreateToggle({ Name = "Enable ESP", CurrentValue = CFG.ESP.Enabled, Callback = function(V) CFG.ESP.Enabled = V end })
+ESPTab:CreateToggle({ Name = "Names", CurrentValue = CFG.ESP.Names, Callback = function(V) CFG.ESP.Names = V end })
+ESPTab:CreateToggle({ Name = "Boxes", CurrentValue = CFG.ESP.Boxes, Callback = function(V) CFG.ESP.Boxes = V end })
+ESPTab:CreateToggle({ Name = "Distance", CurrentValue = CFG.ESP.Distance, Callback = function(V) CFG.ESP.Distance = V end })
+ESPTab:CreateToggle({ Name = "Skeleton", CurrentValue = CFG.ESP.Skeleton, Callback = function(V) CFG.ESP.Skeleton = V end })
+ESPTab:CreateToggle({ Name = "Chams", CurrentValue = CFG.ESP.Chams, Callback = function(V) CFG.ESP.Chams = V end })
+ESPTab:CreateToggle({ Name = "Tracers", CurrentValue = CFG.ESP.Tracers, Callback = function(V) CFG.ESP.Tracers = V end })
+ESPTab:CreateToggle({ Name = "Team Check", CurrentValue = CFG.ESP.TeamCheck, Callback = function(V) CFG.ESP.TeamCheck = V end })
+ESPTab:CreateSlider({ Name = "Max Distance", Min = 50, Max = 2000, CurrentValue = CFG.ESP.MaxDist, Increment = 50, ValueName = "Studs", Callback = function(V) CFG.ESP.MaxDist = V end })
 
-ESPTab:CreateToggle({
-    Name = "Names",
-    CurrentValue = CFG.ESP.Names,
-    Callback = function(Value) CFG.ESP.Names = Value end,
-})
+AimTab:CreateToggle({ Name = "Enable Camera Lock", CurrentValue = CFG.Aim.Enabled, Callback = function(V) CFG.Aim.Enabled = V end })
+AimTab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = CFG.Aim.ShowFOV, Callback = function(V) CFG.Aim.ShowFOV = V end })
+AimTab:CreateSlider({ Name = "FOV Radius", Min = 30, Max = 600, CurrentValue = CFG.Aim.FOV, Increment = 5, ValueName = "Pixels", Callback = function(V) CFG.Aim.FOV = V end })
+AimTab:CreateSlider({ Name = "Smoothing Speed", Min = 1, Max = 100, CurrentValue = math.floor(CFG.Aim.Smoothing * 100), Increment = 1, ValueName = "%", Callback = function(V) CFG.Aim.Smoothing = V / 100 end })
 
-ESPTab:CreateToggle({
-    Name = "Boxes",
-    CurrentValue = CFG.ESP.Boxes,
-    Callback = function(Value) CFG.ESP.Boxes = Value end,
-})
-
-ESPTab:CreateToggle({
-    Name = "Distance",
-    CurrentValue = CFG.ESP.Distance,
-    Callback = function(Value) CFG.ESP.Distance = Value end,
-})
-
-ESPTab:CreateToggle({
-    Name = "Skeleton",
-    CurrentValue = CFG.ESP.Skeleton,
-    Callback = function(Value) CFG.ESP.Skeleton = Value end,
-})
-
-ESPTab:CreateToggle({
-    Name = "Chams",
-    CurrentValue = CFG.ESP.Chams,
-    Callback = function(Value) CFG.ESP.Chams = Value end,
-})
-
-ESPTab:CreateToggle({
-    Name = "Tracers",
-    CurrentValue = CFG.ESP.Tracers,
-    Callback = function(Value) CFG.ESP.Tracers = Value end,
-})
-
-ESPTab:CreateToggle({
-    Name = "Team Check",
-    CurrentValue = CFG.ESP.TeamCheck,
-    Callback = function(Value) CFG.ESP.TeamCheck = Value end,
-})
-
-ESPTab:CreateSlider({
-    Name = "Max Distance",
-    Min = 50,
-    Max = 2000,
-    CurrentValue = CFG.ESP.MaxDist,
-    Increment = 50,
-    ValueName = "Studs",
-    Callback = function(Value) CFG.ESP.MaxDist = Value end,
-})
-
--- ============================================================
--- UI ELEMENTS: NEW AIMBOT TAB
--- ============================================================
-AimTab:CreateToggle({
-    Name = "Enable Camera Lock",
-    CurrentValue = CFG.Aim.Enabled,
-    Callback = function(Value) CFG.Aim.Enabled = Value end,
-})
-
-AimTab:CreateToggle({
-    Name = "Show FOV Circle",
-    CurrentValue = CFG.Aim.ShowFOV,
-    Callback = function(Value) CFG.Aim.ShowFOV = Value end,
-})
-
-AimTab:CreateSlider({
-    Name = "FOV Radius",
-    Min = 30,
-    Max = 600,
-    CurrentValue = CFG.Aim.FOV,
-    Increment = 5,
-    ValueName = "Pixels",
-    Callback = function(Value) CFG.Aim.FOV = Value end,
-})
-
-AimTab:CreateSlider({
-    Name = "Smoothing Speed",
-    Min = 1,
-    Max = 100,
-    CurrentValue = math.floor(CFG.Aim.Smoothing * 100),
-    Increment = 1,
-    ValueName = "%",
-    Callback = function(Value) CFG.Aim.Smoothing = Value / 100 end,
-})
-
--- ============================================================
--- UI ELEMENTS: MOVEMENT TAB
--- ============================================================
 MoveTab:CreateSection("Speed & Jump")
-
-MoveTab:CreateToggle({
-    Name = "Speed Hack",
-    CurrentValue = CFG.Move.SpeedEnabled,
-    Callback = function(Value)
-        CFG.Move.SpeedEnabled = Value
-        local c = LocalPlayer.Character
-        local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h then h.WalkSpeed = Value and CFG.Move.SpeedVal or 16 end
-    end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Walk Speed",
-    Min = 16,
-    Max = 300,
-    CurrentValue = CFG.Move.SpeedVal,
-    Increment = 1,
-    ValueName = "Speed",
-    Callback = function(Value)
-        CFG.Move.SpeedVal = Value
-        local c = LocalPlayer.Character
-        local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h and CFG.Move.SpeedEnabled then h.WalkSpeed = Value end
-    end,
-})
-
-MoveTab:CreateToggle({
-    Name = "Jump Hack",
-    CurrentValue = CFG.Move.JumpEnabled,
-    Callback = function(Value)
-        CFG.Move.JumpEnabled = Value
-        local c = LocalPlayer.Character
-        local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h then h.JumpPower = Value and CFG.Move.JumpVal or 50 end
-    end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Jump Power",
-    Min = 50,
-    Max = 500,
-    CurrentValue = CFG.Move.JumpVal,
-    Increment = 1,
-    ValueName = "Power",
-    Callback = function(Value)
-        CFG.Move.JumpVal = Value
-        local c = LocalPlayer.Character
-        local h = c and c:FindFirstChildOfClass("Humanoid")
-        if h and CFG.Move.JumpEnabled then h.JumpPower = Value end
-    end,
-})
+MoveTab:CreateToggle({ Name = "Speed Hack", CurrentValue = CFG.Move.SpeedEnabled, Callback = function(V) CFG.Move.SpeedEnabled = V end })
+MoveTab:CreateSlider({ Name = "Walk Speed", Min = 16, Max = 300, CurrentValue = CFG.Move.SpeedVal, Increment = 1, ValueName = "Speed", Callback = function(V) CFG.Move.SpeedVal = V end })
+MoveTab:CreateToggle({ Name = "Jump Hack", CurrentValue = CFG.Move.JumpEnabled, Callback = function(V) CFG.Move.JumpEnabled = V end })
+MoveTab:CreateSlider({ Name = "Jump Power", Min = 50, Max = 500, CurrentValue = CFG.Move.JumpVal, Increment = 1, ValueName = "Power", Callback = function(V) CFG.Move.JumpVal = V end })
 
 MoveTab:CreateSection("Flight")
-
-MoveTab:CreateToggle({
-    Name = "Fly Enabled (Press F)",
-    CurrentValue = CFG.Move.FlyEnabled,
-    Callback = function(Value) CFG.Move.FlyEnabled = Value end,
-})
-
-MoveTab:CreateSlider({
-    Name = "Fly Speed",
-    Min = 10,
-    Max = 300,
-    CurrentValue = CFG.Move.FlySpeed,
-    Increment = 5,
-    ValueName = "Speed",
-    Callback = function(Value) CFG.Move.FlySpeed = Value end,
-})
+MoveTab:CreateToggle({ Name = "Fly Enabled (Press F)", CurrentValue = CFG.Move.FlyEnabled, Callback = function(V) CFG.Move.FlyEnabled = V end })
+MoveTab:CreateSlider({ Name = "Fly Speed", Min = 10, Max = 300, CurrentValue = CFG.Move.FlySpeed, Increment = 5, ValueName = "Speed", Callback = function(V) CFG.Move.FlySpeed = V end })
 
 -- ============================================================
--- FLY SYSTEM CONTROLS
+-- SYSTEMS LOGIC
 -- ============================================================
 local flyActive = false
 local flyBodyVel, flyBodyGyro
 
 local function startFly()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart", 5)
     local hum  = char:FindFirstChildOfClass("Humanoid")
     if not (root and hum) then return end
 
     hum.PlatformStand = true
-
     flyBodyGyro = Instance.new("BodyGyro")
     flyBodyGyro.MaxTorque = Vector3.new(9e8, 9e8, 9e8)
     flyBodyGyro.P = 9e4
@@ -349,9 +199,6 @@ RunService.Heartbeat:Connect(function()
     flyBodyGyro.CFrame = cam.CFrame
 end)
 
--- ============================================================
--- 2D DRAWING FRAME POOL SYSTEM
--- ============================================================
 local function WorldToScreen(pos)
     local screenPos, onScreen = Camera:WorldToScreenPoint(pos)
     return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
@@ -393,9 +240,6 @@ local function DrawLine(p1: Vector2, p2: Vector2, color: Color3, thickness: numb
     line.BackgroundTransparency = 0
 end
 
--- ============================================================
--- TARGET ACQUISITION LOGIC (NEW)
--- ============================================================
 local function GetClosestPlayerToMouse()
     local target = nil
     local maxDistance = CFG.Aim.FOV
@@ -403,25 +247,19 @@ local function GetClosestPlayerToMouse()
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
-
-        -- Team check configuration match
-        if CFG.ESP.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then 
-            continue 
-        end
+        if CFG.ESP.TeamCheck and player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team then continue end
 
         local char = player.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local hum  = char and char:FindFirstChildOfClass("Humanoid")
 
-        -- Ensure they exist, are alive, and within configured distance limits
         if root and hum and hum.Health > 0 then
-            local pRootPos = root.Position
             local localChar = LocalPlayer.Character
             local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
-            local distFromMe = localRoot and (pRootPos - localRoot.Position).Magnitude or 0
+            local distFromMe = localRoot and (root.Position - localRoot.Position).Magnitude or 0
             
             if distFromMe <= CFG.ESP.MaxDist then
-                local screenPos, onScreen = WorldToScreen(pRootPos)
+                local screenPos, onScreen = WorldToScreen(root.Position)
                 if onScreen then
                     local distanceToMouse = (screenPos - mousePos).Magnitude
                     if distanceToMouse < maxDistance then
@@ -436,7 +274,7 @@ local function GetClosestPlayerToMouse()
 end
 
 -- ============================================================
--- TRACKER DATA LAYER
+-- ESP GENERATION
 -- ============================================================
 local ESPStore = {}
 
@@ -446,8 +284,6 @@ local function BuildESP(player)
     local hl = Instance.new("Highlight")
     hl.FillTransparency    = 1
     hl.OutlineTransparency = 0
-    hl.OutlineColor        = CFG.ESP.EnemyColor
-    hl.FillColor           = CFG.ESP.EnemyColor
     hl.Enabled              = false
     hl.Parent              = ScreenGui
 
@@ -466,27 +302,19 @@ local function BuildESP(player)
     nameLbl.TextSize              = 12
     nameLbl.Font                  = Enum.Font.GothamBold
     nameLbl.TextStrokeTransparency = 0
-    nameLbl.TextStrokeColor3      = Color3.new(0,0,0)
     nameLbl.Parent                = bb
 
     local distLbl = Instance.new("TextLabel")
     distLbl.Size                  = UDim2.new(1, 0, 0.45, 0)
     distLbl.Position              = UDim2.new(0, 0, 0.55, 0)
     distLbl.BackgroundTransparency = 1
-    distLbl.Text                  = ""
     distLbl.TextColor3            = Color3.fromRGB(170, 215, 255)
     distLbl.TextSize              = 10
     distLbl.Font                  = Enum.Font.Gotham
     distLbl.TextStrokeTransparency = 0
-    distLbl.TextStrokeColor3      = Color3.new(0,0,0)
     distLbl.Parent                = bb
 
-    ESPStore[player] = {
-        highlight = hl,
-        billboard = bb,
-        nameLbl   = nameLbl,
-        distLbl   = distLbl,
-    }
+    ESPStore[player] = { highlight = hl, billboard = bb, nameLbl = nameLbl, distLbl = distLbl }
 end
 
 local function DestroyESP(player)
@@ -503,16 +331,26 @@ Players.PlayerRemoving:Connect(DestroyESP)
 for _, p in ipairs(Players:GetPlayers()) do BuildESP(p) end
 
 -- ============================================================
--- MAIN LOOP
+-- CORE RUN LOOP
 -- ============================================================
 RunService.Heartbeat:Connect(function()
     local localChar = LocalPlayer.Character
     local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+    
     if localChar then
         local hum = localChar:FindFirstChildOfClass("Humanoid")
         if hum then
-            if CFG.Move.SpeedEnabled then hum.WalkSpeed = CFG.Move.SpeedVal end
-            if CFG.Move.JumpEnabled  then hum.JumpPower  = CFG.Move.JumpVal  end
+            -- Safe Roblox Character Properties overrides
+            if CFG.Move.SpeedEnabled then 
+                hum.WalkSpeed = CFG.Move.SpeedVal 
+            else
+                hum.WalkSpeed = 16
+            end
+            
+            if CFG.Move.JumpEnabled then 
+                hum.UseJumpPower = true
+                hum.JumpPower = CFG.Move.JumpVal 
+            end
         end
     end
 
@@ -520,7 +358,6 @@ RunService.Heartbeat:Connect(function()
     local vpSize = Camera.ViewportSize
     local tracerOrigin = Vector2.new(vpSize.X * 0.5, vpSize.Y)
 
-    -- NEW: Update visual FOV circle position and dimensions
     if CFG.Aim.ShowFOV and CFG.Aim.Enabled then
         local mPos = UserInputService:GetMouseLocation()
         FOVCircle.Position = UDim2.fromOffset(mPos.X, mPos.Y)
@@ -530,7 +367,6 @@ RunService.Heartbeat:Connect(function()
         FOVCircle.Visible = false
     end
 
-    -- NEW: Smoothly Lerp Camera toward Closest Target inside FOV
     if CFG.Aim.Enabled then
         local currentTargetRoot = GetClosestPlayerToMouse()
         if currentTargetRoot then
@@ -569,7 +405,6 @@ RunService.Heartbeat:Connect(function()
         end
         local col = isEnemy and CFG.ESP.EnemyColor or CFG.ESP.FriendColor
 
-        -- Highlights Setup
         d.highlight.Adornee      = char
         d.highlight.OutlineColor = col
         d.highlight.FillColor    = col
@@ -577,7 +412,6 @@ RunService.Heartbeat:Connect(function()
         d.highlight.FillTransparency    = CFG.ESP.Chams and 0.5 or 1
         d.highlight.Enabled = CFG.ESP.Boxes or CFG.ESP.Chams
 
-        -- Billboard Setup
         local showBB = CFG.ESP.Names or CFG.ESP.Distance
         d.billboard.Adornee = root
         d.billboard.Enabled = showBB
@@ -588,15 +422,11 @@ RunService.Heartbeat:Connect(function()
             d.distLbl.Text    = CFG.ESP.Distance and (math.floor(dist).." studs") or ""
         end
 
-        -- Tracers Rendering
         if CFG.ESP.Tracers then
             local rootSP, onSc = WorldToScreen(root.Position)
-            if onSc then
-                DrawLine(tracerOrigin, rootSP, col, 1)
-            end
+            if onSc then DrawLine(tracerOrigin, rootSP, col, 1) end
         end
 
-        -- Skeleton Rendering
         if CFG.ESP.Skeleton then
             for _, pair in ipairs(SKELETON_PAIRS) do
                 local partA = char:FindFirstChild(pair[1])
@@ -604,18 +434,15 @@ RunService.Heartbeat:Connect(function()
                 if partA and partB then
                     local spA, onA = WorldToScreen(partA.Position)
                     local spB, onB = WorldToScreen(partB.Position)
-                    if onA and onB then
-                        DrawLine(spA, spB, col, 1)
-                    end
+                    if onA and onB then DrawLine(spA, spB, col, 1) end
                 end
             end
         end
     end
 
-    hideExtraLines()
+    HideExtraLines() -- Fixed case sensitivity crash
 end)
 
--- Character Spawn Safety Management
 LocalPlayer.CharacterAdded:Connect(function(char)
     flyActive = false
     flyBodyVel = nil
@@ -623,5 +450,8 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid")
     task.wait(0.1)
     if CFG.Move.SpeedEnabled then hum.WalkSpeed = CFG.Move.SpeedVal end
-    if CFG.Move.JumpEnabled  then hum.JumpPower  = CFG.Move.JumpVal  end
+    if CFG.Move.JumpEnabled  then 
+        hum.UseJumpPower = true
+        hum.JumpPower = CFG.Move.JumpVal 
+    end
 end)
