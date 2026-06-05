@@ -1,0 +1,505 @@
+-- HackUI_Rayfield.lua (v2)
+-- Place in StarterPlayerScripts / Executor Environment
+-- For Educational Purposes Only
+
+local Players         = game:GetService("Players")
+local RunService      = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer    = Players.LocalPlayer
+local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
+local Camera         = workspace.CurrentCamera
+
+-- ============================================================
+-- CONFIG & STATE
+-- ============================================================
+local CFG = {
+    ESP = {
+        Enabled      = false,
+        Names        = true,
+        Boxes        = true,
+        Distance     = true,
+        Skeleton     = false,
+        Chams        = false,
+        Tracers      = false,
+        TeamCheck    = false,
+        MaxDist      = 1000,
+        EnemyColor   = Color3.fromRGB(255, 60, 60),
+        FriendColor  = Color3.fromRGB(60, 255, 120),
+        NameColor    = Color3.fromRGB(255, 255, 255),
+    },
+    Move = {
+        SpeedEnabled = false,
+        SpeedVal     = 16,
+        JumpEnabled  = false,
+        JumpVal      = 50,
+        FlyEnabled   = false,
+        FlySpeed     = 50,
+    },
+}
+
+local SKELETON_PAIRS = {
+    {"Head",         "UpperTorso"},
+    {"UpperTorso",   "LowerTorso"},
+    {"UpperTorso",   "LeftUpperArm"},
+    {"LeftUpperArm", "LeftLowerArm"},
+    {"LeftLowerArm", "LeftHand"},
+    {"UpperTorso",   "RightUpperArm"},
+    {"RightUpperArm","RightLowerArm"},
+    {"RightLowerArm","RightHand"},
+    {"LowerTorso",   "LeftUpperLeg"},
+    {"LeftUpperLeg", "LeftLowerLeg"},
+    {"LeftLowerLeg", "LeftFoot"},
+    {"LowerTorso",   "RightUpperLeg"},
+    {"RightUpperLeg","RightLowerLeg"},
+    {"RightLowerLeg","RightFoot"},
+}
+
+-- ScreenGui for custom Drawing Layer (retains the original line rendering system)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name          = "Rayfield_DrawOverlay"
+ScreenGui.ResetOnSpawn  = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent        = PlayerGui
+
+local DrawFrame = Instance.new("Frame")
+DrawFrame.Name              = "DrawLayer"
+DrawFrame.Size              = UDim2.new(1, 0, 1, 0)
+DrawFrame.BackgroundTransparency = 1
+DrawFrame.Parent            = ScreenGui
+
+-- ============================================================
+-- INITIALIZE RAYFIELD
+-- ============================================================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "⬡ PHANTOM v2",
+    LoadingTitle = "Phantom Interface",
+    LoadingSubtitle = "by Educational Scripting",
+    ConfigurationSaving = {
+        Enabled = false
+    },
+    KeySystem = false
+})
+
+local ESPTab = Window:CreateTab("ESP / Tracker", 4483362458)
+local MoveTab = Window:CreateTab("Movement", 4483362458)
+
+-- ============================================================
+-- UI ELEMENTS: ESP TAB
+-- ============================================================
+ESPTab:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = CFG.ESP.Enabled,
+    Callback = function(Value) CFG.ESP.Enabled = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Names",
+    CurrentValue = CFG.ESP.Names,
+    Callback = function(Value) CFG.ESP.Names = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Boxes",
+    CurrentValue = CFG.ESP.Boxes,
+    Callback = function(Value) CFG.ESP.Boxes = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Distance",
+    CurrentValue = CFG.ESP.Distance,
+    Callback = function(Value) CFG.ESP.Distance = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Skeleton",
+    CurrentValue = CFG.ESP.Skeleton,
+    Callback = function(Value) CFG.ESP.Skeleton = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Chams",
+    CurrentValue = CFG.ESP.Chams,
+    Callback = function(Value) CFG.ESP.Chams = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Tracers",
+    CurrentValue = CFG.ESP.Tracers,
+    Callback = function(Value) CFG.ESP.Tracers = Value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = CFG.ESP.TeamCheck,
+    Callback = function(Value) CFG.ESP.TeamCheck = Value end,
+})
+
+ESPTab:CreateSlider({
+    Name = "Max Distance",
+    Min = 50,
+    Max = 2000,
+    CurrentValue = CFG.ESP.MaxDist,
+    Increment = 50,
+    ValueName = "Studs",
+    Callback = function(Value) CFG.ESP.MaxDist = Value end,
+})
+
+-- ============================================================
+-- UI ELEMENTS: MOVEMENT TAB
+-- ============================================================
+MoveTab:CreateSection("Speed & Jump")
+
+MoveTab:CreateToggle({
+    Name = "Speed Hack",
+    CurrentValue = CFG.Move.SpeedEnabled,
+    Callback = function(Value)
+        CFG.Move.SpeedEnabled = Value
+        local c = LocalPlayer.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h then h.WalkSpeed = Value and CFG.Move.SpeedVal or 16 end
+    end,
+})
+
+MoveTab:CreateSlider({
+    Name = "Walk Speed",
+    Min = 16,
+    Max = 300,
+    CurrentValue = CFG.Move.SpeedVal,
+    Increment = 1,
+    ValueName = "Speed",
+    Callback = function(Value)
+        CFG.Move.SpeedVal = Value
+        local c = LocalPlayer.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h and CFG.Move.SpeedEnabled then h.WalkSpeed = Value end
+    end,
+})
+
+MoveTab:CreateToggle({
+    Name = "Jump Hack",
+    CurrentValue = CFG.Move.JumpEnabled,
+    Callback = function(Value)
+        CFG.Move.JumpEnabled = Value
+        local c = LocalPlayer.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h then h.JumpPower = Value and CFG.Move.JumpVal or 50 end
+    end,
+})
+
+MoveTab:CreateSlider({
+    Name = "Jump Power",
+    Min = 50,
+    Max = 500,
+    CurrentValue = CFG.Move.JumpVal,
+    Increment = 1,
+    ValueName = "Power",
+    Callback = function(Value)
+        CFG.Move.JumpVal = Value
+        local c = LocalPlayer.Character
+        local h = c and c:FindFirstChildOfClass("Humanoid")
+        if h and CFG.Move.JumpEnabled then h.JumpPower = Value end
+    end,
+})
+
+MoveTab:CreateSection("Flight")
+
+MoveTab:CreateToggle({
+    Name = "Fly Enabled (Press F)",
+    CurrentValue = CFG.Move.FlyEnabled,
+    Callback = function(Value) CFG.Move.FlyEnabled = Value end,
+})
+
+MoveTab:CreateSlider({
+    Name = "Fly Speed",
+    Min = 10,
+    Max = 300,
+    CurrentValue = CFG.Move.FlySpeed,
+    Increment = 5,
+    ValueName = "Speed",
+    Callback = function(Value) CFG.Move.FlySpeed = Value end,
+})
+
+-- ============================================================
+-- FLY SYSTEM CONTROLS
+-- ============================================================
+local flyActive = false
+local flyBodyVel, flyBodyGyro
+
+local function startFly()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum  = char:FindFirstChildOfClass("Humanoid")
+    if not (root and hum) then return end
+
+    hum.PlatformStand = true
+
+    flyBodyGyro = Instance.new("BodyGyro")
+    flyBodyGyro.MaxTorque = Vector3.new(9e8, 9e8, 9e8)
+    flyBodyGyro.P = 9e4
+    flyBodyGyro.CFrame = root.CFrame
+    flyBodyGyro.Parent = root
+
+    flyBodyVel = Instance.new("BodyVelocity")
+    flyBodyVel.Velocity = Vector3.zero
+    flyBodyVel.MaxForce = Vector3.new(9e8, 9e8, 9e8)
+    flyBodyVel.Parent = root
+end
+
+local function stopFly()
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.PlatformStand = false end
+    end
+    if flyBodyVel  then flyBodyVel:Destroy()  flyBodyVel  = nil end
+    if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+end
+
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == Enum.KeyCode.F and CFG.Move.FlyEnabled then
+        flyActive = not flyActive
+        if flyActive then startFly() else stopFly() end
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not flyActive or not flyBodyVel or not flyBodyGyro then return end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local cam   = Camera
+    local speed = CFG.Move.FlySpeed
+    local dir   = Vector3.zero
+
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.yAxis end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.yAxis end
+
+    flyBodyVel.Velocity = dir.Magnitude > 0 and dir.Unit * speed or Vector3.zero
+    flyBodyGyro.CFrame = cam.CFrame
+end)
+
+-- ============================================================
+-- 2D DRAWING FRAME POOL SYSTEM
+-- ============================================================
+local function WorldToScreen(pos)
+    local screenPos, onScreen = Camera:WorldToScreenPoint(pos)
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
+end
+
+local linePool = {}
+local lineUsed = 0
+
+local function GetLine()
+    lineUsed += 1
+    if not linePool[lineUsed] then
+        local f = Instance.new("Frame")
+        f.AnchorPoint = Vector2.new(0.5, 0)
+        f.BorderSizePixel = 0
+        f.BackgroundColor3 = Color3.new(1,1,1)
+        f.ZIndex = 2
+        f.Parent = DrawFrame
+        linePool[lineUsed] = f
+    end
+    linePool[lineUsed].Visible = true
+    return linePool[lineUsed]
+end
+
+local function HideExtraLines()
+    for i = lineUsed + 1, #linePool do
+        linePool[i].Visible = false
+    end
+end
+
+local function DrawLine(p1: Vector2, p2: Vector2, color: Color3, thickness: number)
+    local line = GetLine()
+    local diff = p2 - p1
+    local len  = diff.Magnitude
+    local ang  = math.atan2(diff.Y, diff.X)
+    line.Position = UDim2.fromOffset(p1.X, p1.Y)
+    line.Size = UDim2.fromOffset(len, thickness or 1)
+    line.Rotation = math.deg(ang)
+    line.BackgroundColor3 = color
+    line.BackgroundTransparency = 0
+end
+
+-- ============================================================
+-- TRACKER DATA LAYER
+-- ============================================================
+local ESPStore = {}
+
+local function BuildESP(player)
+    if player == LocalPlayer or ESPStore[player] then return end
+
+    local hl = Instance.new("Highlight")
+    hl.FillTransparency    = 1
+    hl.OutlineTransparency = 0
+    hl.OutlineColor        = CFG.ESP.EnemyColor
+    hl.FillColor           = CFG.ESP.EnemyColor
+    hl.Enabled             = false
+    hl.Parent              = ScreenGui
+
+    local bb = Instance.new("BillboardGui")
+    bb.Size          = UDim2.new(0, 130, 0, 40)
+    bb.StudsOffset   = Vector3.new(0, 3.2, 0)
+    bb.AlwaysOnTop   = true
+    bb.Enabled       = false
+    bb.Parent        = ScreenGui
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size                  = UDim2.new(1, 0, 0.55, 0)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text                  = player.Name
+    nameLbl.TextColor3            = CFG.ESP.NameColor
+    nameLbl.TextSize              = 12
+    nameLbl.Font                  = Enum.Font.GothamBold
+    nameLbl.TextStrokeTransparency = 0
+    nameLbl.TextStrokeColor3      = Color3.new(0,0,0)
+    nameLbl.Parent                = bb
+
+    local distLbl = Instance.new("TextLabel")
+    distLbl.Size                  = UDim2.new(1, 0, 0.45, 0)
+    distLbl.Position              = UDim2.new(0, 0, 0.55, 0)
+    distLbl.BackgroundTransparency = 1
+    distLbl.Text                  = ""
+    distLbl.TextColor3            = Color3.fromRGB(170, 215, 255)
+    distLbl.TextSize              = 10
+    distLbl.Font                  = Enum.Font.Gotham
+    distLbl.TextStrokeTransparency = 0
+    distLbl.TextStrokeColor3      = Color3.new(0,0,0)
+    distLbl.Parent                = bb
+
+    ESPStore[player] = {
+        highlight = hl,
+        billboard = bb,
+        nameLbl   = nameLbl,
+        distLbl   = distLbl,
+    }
+end
+
+local function DestroyESP(player)
+    local d = ESPStore[player]
+    if d then
+        d.highlight:Destroy()
+        d.billboard:Destroy()
+        ESPStore[player] = nil
+    end
+end
+
+Players.PlayerAdded:Connect(BuildESP)
+Players.PlayerRemoving:Connect(DestroyESP)
+for _, p in ipairs(Players:GetPlayers()) do BuildESP(p) end
+
+-- ============================================================
+-- MAIN LOOP
+-- ============================================================
+RunService.Heartbeat:Connect(function()
+    local localChar = LocalPlayer.Character
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+    if localChar then
+        local hum = localChar:FindFirstChildOfClass("Humanoid")
+        if hum then
+            if CFG.Move.SpeedEnabled then hum.WalkSpeed = CFG.Move.SpeedVal end
+            if CFG.Move.JumpEnabled  then hum.JumpPower  = CFG.Move.JumpVal  end
+        end
+    end
+
+    lineUsed = 0
+    local vpSize = Camera.ViewportSize
+    local tracerOrigin = Vector2.new(vpSize.X * 0.5, vpSize.Y)
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+
+        local d = ESPStore[player]
+        if not d then BuildESP(player) continue end
+
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local alive = hum and hum.Health > 0
+
+        if not (CFG.ESP.Enabled and char and root and alive) then
+            d.highlight.Enabled = false
+            d.billboard.Enabled = false
+            continue
+        end
+
+        local dist = localRoot and (root.Position - localRoot.Position).Magnitude or 0
+        if dist > CFG.ESP.MaxDist then
+            d.highlight.Enabled = false
+            d.billboard.Enabled = false
+            continue
+        end
+
+        local isEnemy = true
+        if CFG.ESP.TeamCheck and player.Team and LocalPlayer.Team then
+            isEnemy = player.Team ~= LocalPlayer.Team
+        end
+        local col = isEnemy and CFG.ESP.EnemyColor or CFG.ESP.FriendColor
+
+        -- Highlights Setup
+        d.highlight.Adornee      = char
+        d.highlight.OutlineColor = col
+        d.highlight.FillColor    = col
+        d.highlight.OutlineTransparency = CFG.ESP.Boxes and 0 or 1
+        d.highlight.FillTransparency    = CFG.ESP.Chams and 0.5 or 1
+        d.highlight.Enabled = CFG.ESP.Boxes or CFG.ESP.Chams
+
+        -- Billboard Setup
+        local showBB = CFG.ESP.Names or CFG.ESP.Distance
+        d.billboard.Adornee = root
+        d.billboard.Enabled = showBB
+        if showBB then
+            d.nameLbl.Visible = CFG.ESP.Names
+            d.nameLbl.Text    = player.Name
+            d.distLbl.Visible = CFG.ESP.Distance
+            d.distLbl.Text    = CFG.ESP.Distance and (math.floor(dist).." studs") or ""
+        end
+
+        -- Tracers Rendering
+        if CFG.ESP.Tracers then
+            local rootSP, onSc = WorldToScreen(root.Position)
+            if onSc then
+                DrawLine(tracerOrigin, rootSP, col, 1)
+            end
+        end
+
+        -- Skeleton Rendering
+        if CFG.ESP.Skeleton then
+            for _, pair in ipairs(SKELETON_PAIRS) do
+                local partA = char:FindFirstChild(pair[1])
+                local partB = char:FindFirstChild(pair[2])
+                if partA and partB then
+                    local spA, onA = WorldToScreen(partA.Position)
+                    local spB, onB = WorldToScreen(partB.Position)
+                    if onA and onB then
+                        DrawLine(spA, spB, col, 1)
+                    end
+                end
+            end
+        end
+    end
+
+    HideExtraLines()
+end)
+
+-- Character Spawn Safety Management
+LocalPlayer.CharacterAdded:Connect(function(char)
+    flyActive = false
+    flyBodyVel = nil
+    flyBodyGyro = nil
+    local hum = char:WaitForChild("Humanoid")
+    task.wait(0.1)
+    if CFG.Move.SpeedEnabled then hum.WalkSpeed = CFG.Move.SpeedVal end
+    if CFG.Move.JumpEnabled  then hum.JumpPower  = CFG.Move.JumpVal  end
+end)
