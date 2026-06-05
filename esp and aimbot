@@ -1,5 +1,5 @@
--- HackUI_Universal_Rayfield.lua (v2.4 Universal Scaling Patched)
--- Supports R6, R15, StreamingEnabled, and Custom Character Models
+-- HackUI_Universal_Final.lua (v2.5 Bypass & Load Patched)
+-- Designed for Maximum Executor Compatibility
 -- For Educational Purposes Only
 
 local Players         = game:GetService("Players")
@@ -19,9 +19,9 @@ if makefolder then pcall(function() makefolder("Phantom_Configs") end) end
 local CFG = {
     ESP = {
         Enabled      = false,
-        Names        = true,
-        Boxes        = true,
-        Distance     = true,
+        Names        = false,
+        Boxes        = false,
+        Distance     = false,
         Skeleton     = false,
         Chams        = false,
         Tracers      = false,
@@ -48,7 +48,6 @@ local CFG = {
     }
 }
 
--- Dynamic Skeleton pairs mapped out to check safely at runtime
 local R15_SKELETON = {{"Head","UpperTorso"},{"UpperTorso","LowerTorso"},{"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"}}
 local R6_SKELETON  = {{"Head","Torso"},{"Torso","Left Arm"},{"Torso","Right Arm"},{"Torso","Left Leg"},{"Torso","Right Leg"}}
 
@@ -75,9 +74,15 @@ FOVStroke.Thickness = 1
 FOVStroke.Color = CFG.Aim.FOVColor
 
 -- ============================================================
--- INITIALIZE RAYFIELD FRAMEWORK
+-- SAFE API UI FETCH (Bypasses URL blocks)
 -- ============================================================
-local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusURM/Rayfield/main/source.lua'))()
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not success or not Rayfield then
+    Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusURM/Rayfield/main/source.lua'))()
+end
 
 local Window = Rayfield:CreateWindow({
     Name = "⬡ PHANTOM UNIVERSAL",
@@ -87,10 +92,11 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false
 })
 
-local ESPTab    = Window:CreateTab("ESP / Tracker", 4483362458) 
-local AimTab    = Window:CreateTab("Aimbot", 7072719114) 
-local MoveTab   = Window:CreateTab("Movement", 7072722131)
-local ConfigTab = Window:CreateTab("Configs", 7072718131)
+-- Removed all hardcoded asset IDs to prevent interface initialization crashes
+local ESPTab    = Window:CreateTab("ESP / Tracker") 
+local AimTab    = Window:CreateTab("Aimbot") 
+local MoveTab   = Window:CreateTab("Movement")
+local ConfigTab = Window:CreateTab("Configs")
 
 local UI_Elements = {}
 UI_Elements.ESP_Enabled   = ESPTab:CreateToggle({ Name = "Enable ESP", CurrentValue = CFG.ESP.Enabled, Callback = function(V) CFG.ESP.Enabled = V end })
@@ -119,7 +125,124 @@ UI_Elements.Move_FlyEnabled = MoveTab:CreateToggle({ Name = "Fly Enabled (Press 
 UI_Elements.Move_FlySpeed   = MoveTab:CreateSlider({ Name = "Fly Speed", Min = 10, Max = 300, CurrentValue = CFG.Move.FlySpeed, Increment = 5, ValueName = "Speed", Callback = function(V) CFG.Move.FlySpeed = V end })
 
 -- ============================================================
--- SYSTEM UTILITIES
+-- CONFIGURATION MANAGER ENGINE
+-- ============================================================
+local selectedConfigName = ""
+local configDropdown = nil
+
+local function formatConfigForSaving(configTable)
+    local copy = HttpService:JSONDecode(HttpService:JSONEncode(configTable))
+    copy.ESP.EnemyColor = {configTable.ESP.EnemyColor.R, configTable.ESP.EnemyColor.G, configTable.ESP.EnemyColor.B}
+    copy.ESP.FriendColor = {configTable.ESP.FriendColor.R, configTable.ESP.FriendColor.G, configTable.ESP.FriendColor.B}
+    copy.ESP.NameColor = {configTable.ESP.NameColor.R, configTable.ESP.NameColor.G, configTable.ESP.NameColor.B}
+    copy.Aim.FOVColor = {configTable.Aim.FOVColor.R, configTable.Aim.FOVColor.G, configTable.Aim.FOVColor.B}
+    return HttpService:JSONEncode(copy)
+end
+
+local function parseLoadedConfigData(jsonString)
+    local data = HttpService:JSONDecode(jsonString)
+    data.ESP.EnemyColor = Color3.new(data.ESP.EnemyColor[1], data.ESP.EnemyColor[2], data.ESP.EnemyColor[3])
+    data.ESP.FriendColor = Color3.new(data.ESP.FriendColor[1], data.ESP.FriendColor[2], data.ESP.FriendColor[3])
+    data.ESP.NameColor = Color3.new(data.ESP.NameColor[1], data.ESP.NameColor[2], data.ESP.NameColor[3])
+    data.Aim.FOVColor = Color3.new(data.Aim.FOVColor[1], data.Aim.FOVColor[2], data.Aim.FOVColor[3])
+    return data
+end
+
+local function updateUIFromTable(targetTable)
+    pcall(function()
+        UI_Elements.ESP_Enabled:Set(targetTable.ESP.Enabled)
+        UI_Elements.ESP_Names:Set(targetTable.ESP.Names)
+        UI_Elements.ESP_Boxes:Set(targetTable.ESP.Boxes)
+        UI_Elements.ESP_Distance:Set(targetTable.ESP.Distance)
+        UI_Elements.ESP_Skeleton:Set(targetTable.ESP.Skeleton)
+        UI_Elements.ESP_Chams:Set(targetTable.ESP.Chams)
+        UI_Elements.ESP_Tracers:Set(targetTable.ESP.Tracers)
+        UI_Elements.ESP_TeamCheck:Set(targetTable.ESP.TeamCheck)
+        UI_Elements.ESP_MaxDist:Set(targetTable.ESP.MaxDist)
+        
+        UI_Elements.Aim_Enabled:Set(targetTable.Aim.Enabled)
+        UI_Elements.Aim_ShowFOV:Set(targetTable.Aim.ShowFOV)
+        UI_Elements.Aim_FOV:Set(targetTable.Aim.FOV)
+        UI_Elements.Aim_Smoothing:Set(math.floor(targetTable.Aim.Smoothing * 100))
+        
+        UI_Elements.Move_SpeedEnabled:Set(targetTable.Move.SpeedEnabled)
+        UI_Elements.Move_SpeedVal:Set(targetTable.Move.SpeedVal)
+        UI_Elements.Move_JumpEnabled:Set(targetTable.Move.JumpEnabled)
+        UI_Elements.Move_JumpVal:Set(targetTable.Move.JumpVal)
+        UI_Elements.Move_FlyEnabled:Set(targetTable.Move.FlyEnabled)
+        UI_Elements.Move_FlySpeed:Set(targetTable.Move.FlySpeed)
+    end)
+end
+
+local function fetchSavedConfigsList()
+    local list = {}
+    if not listfiles then return {"Default"} end
+    pcall(function()
+        for _, path in ipairs(listfiles("Phantom_Configs")) do
+            local name = path:match("([^\\/]+)%.json$")
+            if name then table.insert(list, name) end
+        end
+    end)
+    if #list == 0 then table.insert(list, "No Configs Found") end
+    return list
+end
+
+ConfigTab:CreateSection("Manage Presets")
+
+ConfigTab:CreateInput({
+    Name = "New Config Name",
+    PlaceholderText = "Type filename...",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text) selectedConfigName = Text end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Save / Create Config",
+    Callback = function()
+        if selectedConfigName == "" or selectedConfigName == "No Configs Found" then return end
+        if writefile then
+            writefile("Phantom_Configs/" .. selectedConfigName .. ".json", formatConfigForSaving(CFG))
+            Rayfield:Notify({Title = "Success", Content = "Saved " .. selectedConfigName, Duration = 2})
+            if configDropdown then configDropdown:Refresh(fetchSavedConfigsList(), true) end
+        end
+    end,
+})
+
+configDropdown = ConfigTab:CreateDropdown({
+    Name = "Select Saved Config",
+    Options = fetchSavedConfigsList(),
+    CurrentOption = {""},
+    MultipleOptions = false,
+    Callback = function(Options) selectedConfigName = Options[1] or "" end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Load Selected Config",
+    Callback = function()
+        local fileLoc = "Phantom_Configs/" .. selectedConfigName .. ".json"
+        if readfile and isfile and isfile(fileLoc) then
+            local parsed = parseLoadedConfigData(readfile(fileLoc))
+            if parsed then
+                CFG = parsed
+                updateUIFromTable(CFG)
+            end
+        end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Overwrite Selected Config",
+    Callback = function()
+        local fileLoc = "Phantom_Configs/" .. selectedConfigName .. ".json"
+        if writefile and isfile and isfile(fileLoc) then
+            writefile(fileLoc, formatConfigForSaving(CFG))
+            Rayfield:Notify({Title = "Updated", Content = "Overwrote " .. selectedConfigName, Duration = 2})
+        end
+    end,
+})
+
+-- ============================================================
+-- SYSTEM UTILITIES & OPERATIONS
 -- ============================================================
 local flyActive = false
 local flyBodyVel, flyBodyGyro
@@ -199,7 +322,6 @@ local function GetClosestPlayerToMouse()
     return target
 end
 
--- Line Renderer Engine
 local linePool, lineUsed = {}, 0
 local function GetLine()
     lineUsed = lineUsed + 1
@@ -230,7 +352,7 @@ local function DrawLine(p1, p2, color, thickness)
 end
 
 -- ============================================================
--- SAFE ESP COMPONENT GENERATION (Handles Streamed Targets)
+-- DYNAMIC TARGET ENGINE 
 -- ============================================================
 local ESPStore = {}
 
@@ -281,13 +403,12 @@ Players.PlayerRemoving:Connect(DestroyESP)
 for _, p in ipairs(Players:GetPlayers()) do BuildESP(p) end
 
 -- ============================================================
--- CORE PERSISTENT PROCESSOR LOOP
+-- RUNTIME CYCLE ENGINE
 -- ============================================================
 RunService.Heartbeat:Connect(function()
     local localChar = LocalPlayer.Character
     local localRoot = GetRoot(localChar)
     
-    -- Safe Local Movement Modification Injection
     if localChar and not flyActive then
         local hum = localChar:FindFirstChildOfClass("Humanoid")
         if hum then
@@ -321,7 +442,6 @@ RunService.Heartbeat:Connect(function()
     local vpSize = Camera.ViewportSize
     local tracerOrigin = Vector2.new(vpSize.X * 0.5, vpSize.Y)
 
-    -- Track FOV Interactive Drawing Frame
     if CFG.Aim.ShowFOV and CFG.Aim.Enabled then
         local mPos = UserInputService:GetMouseLocation()
         FOVCircle.Position = UDim2.fromOffset(mPos.X, mPos.Y)
@@ -331,7 +451,6 @@ RunService.Heartbeat:Connect(function()
         FOVCircle.Visible = false
     end
 
-    -- Smooth Camera Synchronization Aimbot
     if CFG.Aim.Enabled then
         local currentTargetRoot = GetClosestPlayerToMouse()
         if currentTargetRoot then
@@ -339,7 +458,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    -- Process World Tracked Entities Safely
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
 
@@ -351,7 +469,6 @@ RunService.Heartbeat:Connect(function()
         local hum  = char and char:FindFirstChildOfClass("Humanoid")
         local alive = hum and hum.Health > 0
 
-        -- Break out completely if feature disabled or object streamed out out of scope
         if not (CFG.ESP.Enabled and char and root and alive) then
             d.highlight.Enabled = false
             d.billboard.Enabled = false
@@ -371,7 +488,6 @@ RunService.Heartbeat:Connect(function()
         end
         local col = isEnemy and CFG.ESP.EnemyColor or CFG.ESP.FriendColor
 
-        -- Setup Dynamic Outlines (Highlights)
         d.highlight.Adornee      = char
         d.highlight.OutlineColor = col
         d.highlight.FillColor    = col
@@ -379,10 +495,9 @@ RunService.Heartbeat:Connect(function()
         d.highlight.FillTransparency    = CFG.ESP.Chams and 0.5 or 1
         d.highlight.Enabled = CFG.ESP.Boxes or CFG.ESP.Chams
 
-        -- Setup Hovering Labels
         local showBB = CFG.ESP.Names or CFG.ESP.Distance
         d.billboard.Adornee = root
-        d.billboard.StudsOffset = Vector3.new(0, (char:GetScale() * 3.5), 0) -- Scaled to work on big/small avatars
+        d.billboard.StudsOffset = Vector3.new(0, (char:GetScale() * 3.5), 0)
         d.billboard.Enabled = showBB
         if showBB then
             d.nameLbl.Visible = CFG.ESP.Names
@@ -391,13 +506,11 @@ RunService.Heartbeat:Connect(function()
             d.distLbl.Text    = CFG.ESP.Distance and (math.floor(dist).." studs") or ""
         end
 
-        -- Render Line Snap Tracers
         if CFG.ESP.Tracers then
             local rootSP, onSc = WorldToScreen(root.Position)
             if onSc then DrawLine(tracerOrigin, rootSP, col, 1) end
         end
 
-        -- Render Dynamic Adaptive Skeletal Pairs
         if CFG.ESP.Skeleton then
             local skeletonStructure = char:FindFirstChild("UpperTorso") and R15_SKELETON or R6_SKELETON
             for _, pair in ipairs(skeletonStructure) do
