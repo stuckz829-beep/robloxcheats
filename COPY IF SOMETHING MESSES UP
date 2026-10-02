@@ -1,4 +1,4 @@
--- Ultimate Football Hub 2026 (Lag-Optimized Anti-Bounce + Sticky Head + Dive Boost)
+-- Ultimate Football Hub 2026 (Lag-Optimized Anti-Bounce + Sticky Head + Dive Boost + Auto Rush)
 getgenv().SecureMode = true
 
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
@@ -14,34 +14,35 @@ local camera = workspace.CurrentCamera
 local walkSpeed = 18
 local gravityVal = 196.2
 
--- Flight
 local isFlying = false
 local flySpeed = 50
 local flyVelocity = Vector3.zero
 local flyAccel, flyFriction = 8, 6
 
--- Side Tech
 local autoSideTechEnabled = false
 local isHoldingSideTech = false
 local sideTechTargetLookVector = nil
 local SIDE_TECH_ANIM_ID = "rbxassetid://8839176574"
 local sideTechAnimPlaying = false
 
--- Dive Boost
 local diveBoostEnabled = false
 local diveBoostLevel = 1
 local diveBoostSpeed = 0
 local prevDiveState = false
-local DIVE_LEVEL_STEP = 30
+local DIVE_LEVEL_STEP = 20
 
--- Head Tech
 local isHeadModEnabled = false
 local targetHeadScale = 5
 
--- Pull Vector
 local pullVectorEnabled = false
 local pullSpeed = 45
 local isHoldingM1 = false
+
+-- Auto Rush
+local autoRushUnlocked = false
+local autoRushActive = false
+local AUTO_RUSH_KEY = Enum.KeyCode.R
+local FOOTBALL_NAME = "Football"
 
 -- Sticky Head
 local stickyHeadEnabled = false
@@ -67,14 +68,18 @@ local HEAD_LOOP_INTERVAL = 0.08
 local STAND_RAY_LENGTH = 15.0
 local FOOT_CLEARANCE = 0.45
 local SIZE_EPS = 0.001
+local BALL_LIST_REFRESH = 0.6
+local FULL_SCAN_EVERY = 3
+local FULL_SCAN_LIMIT = 800
 
 local humanoid, hrp
 
 local headCache = {}
 local origSizes = setmetatable({}, {__mode = "k"})
 local hooks = setmetatable({}, {__mode = "k"})
-local ballCache = nil
-local ballCacheTime = 0
+local ballList = {}
+local ballListTime = 0
+local refreshCounter = 0
 local lastHeadLoop = 0
 
 local function recomputeDiveBoost()
@@ -123,24 +128,121 @@ local function diveDirection()
     return Vector3.new(0, 0, -1)
 end
 
-local function findFootball()
-    local now = tick()
-    if ballCache and ballCache.Parent and (now - ballCacheTime) < 0.5 then
-        return ballCache
-    end
-    local char = localPlayer.Character
-    local f = char and char:FindFirstChild("Football")
-    if not f then
-        for _, p in ipairs(Players:GetPlayers()) do
-            local c = p.Character
-            local pf = c and c:FindFirstChild("Football")
-            if pf then f = pf break end
+local function ballPos(ball)
+    if not ball then return nil end
+    if ball:IsA("BasePart") then return ball.Position end
+    if ball:IsA("Model") or ball:IsA("Tool") then
+        local pp = ball.PrimaryPart
+        if pp then return pp.Position end
+        local ok, pivot = pcall(function() return ball:GetPivot() end)
+        if ok and pivot then return pivot.Position end
+        if ball:IsA("Tool") then
+            local h = ball:FindFirstChild("Handle")
+            if h and h:IsA("BasePart") then return h.Position end
         end
     end
-    if not f then f = workspace:FindFirstChild("Football", true) end
-    ballCache = f
-    ballCacheTime = now
-    return f
+    local part = ball:FindFirstChildWhichIsA("BasePart", true)
+    if part then return part.Position end
+    return nil
+end
+
+-------------------------------------------------
+-- BALL LIST
+-------------------------------------------------
+local function refreshBallList()
+    local now = tick()
+    if now - ballListTime < BALL_LIST_REFRESH then return end
+    ballListTime = now
+    refreshCounter = refreshCounter + 1
+
+    local list = {}
+    local seen = {}
+
+    local function add(o)
+        if o and not seen[o] then
+            seen[o] = true
+            list[#list + 1] = o
+        end
+    end
+
+    local myChar = localPlayer.Character
+    if myChar then add(myChar:FindFirstChild(FOOTBALL_NAME)) end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == localPlayer then continue end
+        local c = p.Character
+        if c then add(c:FindFirstChild(FOOTBALL_NAME)) end
+    end
+
+    add(workspace:FindFirstChild(FOOTBALL_NAME))
+
+    if #list == 0 or (refreshCounter % FULL_SCAN_EVERY == 0) then
+        local kids = workspace:GetDescendants()
+        local limit = #kids
+        if limit > FULL_SCAN_LIMIT then limit = FULL_SCAN_LIMIT end
+        for i = 1, limit do
+            local v = kids[i]
+            if v.Name == FOOTBALL_NAME then add(v) end
+        end
+    end
+
+    ballList = list
+end
+
+local function findFootball()
+    refreshBallList()
+
+    for i = #ballList, 1, -1 do
+        local b = ballList[i]
+        if not b or not b.Parent then
+            table.remove(ballList, i)
+        end
+    end
+    if #ballList == 0 then return nil end
+
+    local myPos = hrp and hrp.Position
+    if not myPos then return ballList[1] end
+
+    local best, bestDist = nil, math.huge
+    for i = 1, #ballList do
+        local c = ballList[i]
+        local pos = ballPos(c)
+        if pos then
+            local d = (pos - myPos).Magnitude
+            if d < bestDist then
+                bestDist = d
+                best = c
+            end
+        end
+    end
+    return best or ballList[1]
+end
+
+-------------------------------------------------
+-- AUTO RUSH HELPERS
+-------------------------------------------------
+local function stopActiveRush()
+    autoRushActive = false
+    if humanoid then
+        pcall(function() humanoid:Move(Vector3.zero, false) end)
+    end
+end
+
+local function disableAutoRush()
+    autoRushUnlocked = false
+    stopActiveRush()
+end
+
+local function toggleActiveRush()
+    if not autoRushUnlocked then return end
+    task.defer(function()
+        if autoRushActive then
+            stopActiveRush()
+            Rayfield:Notify({Title="Auto Rush", Content="Off", Duration=2})
+        else
+            autoRushActive = true
+            Rayfield:Notify({Title="Auto Rush", Content="On", Duration=2})
+        end
+    end)
 end
 
 -------------------------------------------------
@@ -250,6 +352,11 @@ rayParam.FilterType = Enum.RaycastFilterType.Exclude
 -- INPUT
 -------------------------------------------------
 UIS.InputBegan:Connect(function(i, gp)
+    if not gp and i.UserInputType == Enum.UserInputType.Keyboard and i.KeyCode == AUTO_RUSH_KEY then
+        toggleActiveRush()
+        return
+    end
+
     if i.UserInputType == Enum.UserInputType.MouseButton1 and not gp then
         isHoldingM1 = true
         if autoSideTechEnabled and not isShiftLocked() then
@@ -436,13 +543,12 @@ RunService.Heartbeat:Connect(function(dt)
         hrp.AssemblyLinearVelocity = vel
     end
 
-    -- Dive Boost: adds to existing velocity, doesn't replace it.
+    -- Dive Boost
     if diveBoostEnabled and diveBoostSpeed > 0 and not isFlying and not stickyTarget then
         if sideTechAnimPlaying and not prevDiveState then
             local dir = diveDirection()
             local base = hrp.AssemblyLinearVelocity
             local horiz = Vector3.new(base.X, 0, base.Z)
-            -- add boost in the movement direction, keep existing vertical
             hrp.AssemblyLinearVelocity = horiz + dir * diveBoostSpeed + Vector3.new(0, base.Y, 0)
         end
     end
@@ -451,9 +557,9 @@ RunService.Heartbeat:Connect(function(dt)
     -- Pull Vector
     if pullVectorEnabled and isHoldingM1 and not isFlying and not stickyTarget then
         local ball = findFootball()
-        local ballPart = ball and (ball:IsA("BasePart") and ball or ball:FindFirstChildWhichIsA("BasePart", true))
-        if ballPart then
-            local direction = (ballPart.Position - hrp.Position)
+        local bp = ballPos(ball)
+        if bp then
+            local direction = bp - hrp.Position
             local currentDistance = direction.Magnitude
             if currentDistance <= 4.5 then
                 hrp.AssemblyLinearVelocity = Vector3.zero
@@ -461,6 +567,43 @@ RunService.Heartbeat:Connect(function(dt)
                 hrp.AssemblyLinearVelocity = direction.Unit * pullSpeed
             end
         end
+    end
+
+    -- Auto Rush: velocity only. reads live WalkSpeed every frame.
+    if autoRushUnlocked and autoRushActive and not isFlying and not stickyTarget then
+        if humanoid.PlatformStand then humanoid.PlatformStand = false end
+        if humanoid.Sit then humanoid.Sit = false end
+        if humanoid:GetState() == Enum.HumanoidStateType.Physics then
+            pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+
+        if humanoid.AutoRotate then humanoid.AutoRotate = false end
+
+        local ball = findFootball()
+        local bp = ballPos(ball)
+        if bp then
+            local diff = bp - hrp.Position
+            local flat = Vector3.new(diff.X, 0, diff.Z)
+            local flatMag = flat.Magnitude
+            if flatMag > 0.5 then
+                local dir = flat / flatMag
+                local speed = humanoid.WalkSpeed
+                if speed > 0 then
+                    local vel = hrp.AssemblyLinearVelocity
+                    hrp.AssemblyLinearVelocity = Vector3.new(
+                        dir.X * speed,
+                        vel.Y,
+                        dir.Z * speed
+                    )
+                end
+            end
+        end
+    elseif autoRushActive and (isFlying or stickyTarget) then
+        stopActiveRush()
+    end
+
+    if not autoRushActive and humanoid and not humanoid.AutoRotate then
+        humanoid.AutoRotate = true
     end
 
     -- Flight
@@ -515,16 +658,6 @@ RunService.Heartbeat:Connect(function(dt)
             hrp.AssemblyAngularVelocity = Vector3.zero
             if not humanoid.PlatformStand then humanoid.PlatformStand = true end
             if humanoid.WalkSpeed ~= 0 then humanoid.WalkSpeed = 0 end
-
-            local animator = humanoid:FindFirstChildOfClass("Animator")
-            if animator then
-                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                    local id = track.Animation and track.Animation.AnimationId
-                    if id and id ~= SIDE_TECH_ANIM_ID then
-                        track:Stop(0)
-                    end
-                end
-            end
         end
     elseif stickyTarget and not stickyHeadEnabled then
         detachSticky()
@@ -561,6 +694,18 @@ MainTab:CreateSection("Pull Vector Options")
 MainTab:CreateToggle({Name="Enable Pull Vector", Callback=function(v) pullVectorEnabled=v end})
 MainTab:CreateSlider({Name="Pull Vector Speed", Range={10, 400}, Increment=5, CurrentValue=45, Callback=function(v) pullSpeed=v end})
 
+TechTab:CreateSection("Auto Rush")
+TechTab:CreateToggle({
+    Name = 'Enable Auto Rush "then press R to toggle active"',
+    Callback = function(v)
+        if v then
+            autoRushUnlocked = true
+        else
+            disableAutoRush()
+        end
+    end
+})
+
 TechTab:CreateSection("Head Mods")
 TechTab:CreateToggle({Name="Enable Head Extender (Server-Wide)", Callback=function(v) isHeadModEnabled=v end})
 TechTab:CreateSlider({Name="Head Scale", Range={1,15}, Increment=0.5, CurrentValue=5, Callback=function(v) targetHeadScale=v end})
@@ -583,7 +728,7 @@ TechTab:CreateSection("Sticky Head")
 TechTab:CreateToggle({Name="Sticky Head", Callback=function(v) stickyHeadEnabled=v end})
 
 Rayfield:Notify({
-    Title = "Dive Boost Fixed",
-    Content = "Boost now adds to your dive velocity instead of replacing.",
+    Title = "Ultimate Football Hub Loaded",
+    Content = "Auto Rush uses live WalkSpeed. Sprint changes it on the fly.",
     Duration = 5
 })
