@@ -8,9 +8,6 @@ local UIS = game:GetService("UserInputService")
 local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local VirtualInput = nil
-pcall(function() VirtualInput = game:GetService("VirtualInputManager") end)
-
 -------------------------------------------------
 -- VARIABLES
 -------------------------------------------------
@@ -45,7 +42,6 @@ local isHoldingM1 = false
 local autoRushUnlocked = false
 local autoRushActive = false
 local AUTO_RUSH_KEY = Enum.KeyCode.R
-local wHeldByRush = false
 local FOOTBALL_NAME = "Football"
 
 -- Sticky Head
@@ -72,17 +68,18 @@ local HEAD_LOOP_INTERVAL = 0.08
 local STAND_RAY_LENGTH = 15.0
 local FOOT_CLEARANCE = 0.45
 local SIZE_EPS = 0.001
-local BALL_SCAN_HELD = 0.12
-local BALL_SCAN_FREE = 0.4
-local CHASE_ORIENT = true
+local BALL_LIST_REFRESH = 0.6
+local FULL_SCAN_EVERY = 3
+local FULL_SCAN_LIMIT = 800
 
 local humanoid, hrp
 
 local headCache = {}
 local origSizes = setmetatable({}, {__mode = "k"})
 local hooks = setmetatable({}, {__mode = "k"})
-local ballCache = nil
-local ballCacheTime = 0
+local ballList = {}
+local ballListTime = 0
+local refreshCounter = 0
 local lastHeadLoop = 0
 
 local function recomputeDiveBoost()
@@ -131,81 +128,83 @@ local function diveDirection()
     return Vector3.new(0, 0, -1)
 end
 
--- get world position of the football object (Model/Tool/Folder/Part)
 local function ballPos(ball)
     if not ball then return nil end
     if ball:IsA("BasePart") then return ball.Position end
-
-    -- Model or Tool: use pivot, that's the true center
     if ball:IsA("Model") or ball:IsA("Tool") then
+        local pp = ball.PrimaryPart
+        if pp then return pp.Position end
         local ok, pivot = pcall(function() return ball:GetPivot() end)
         if ok and pivot then return pivot.Position end
-        if ball:IsA("Model") and ball.PrimaryPart then
-            return ball.PrimaryPart.Position
-        end
         if ball:IsA("Tool") then
             local h = ball:FindFirstChild("Handle")
             if h and h:IsA("BasePart") then return h.Position end
         end
     end
-
-    -- Folder or fallback: first BasePart child
     local part = ball:FindFirstChildWhichIsA("BasePart", true)
     if part then return part.Position end
-
     return nil
 end
 
-local function ballIsHeld(ball)
-    if not ball or not ball.Parent then return false end
-    local p = ball.Parent
-    return p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") ~= nil
-end
+-------------------------------------------------
+-- BALL LIST
+-------------------------------------------------
+local function refreshBallList()
+    local now = tick()
+    if now - ballListTime < BALL_LIST_REFRESH then return end
+    ballListTime = now
+    refreshCounter = refreshCounter + 1
 
--- scan ALL footballs, return the closest to our HRP
-local function scanForFootball()
-    local candidates = {}
+    local list = {}
     local seen = {}
 
-    local function add(obj)
-        if obj and not seen[obj] then
-            seen[obj] = true
-            candidates[#candidates + 1] = obj
+    local function add(o)
+        if o and not seen[o] then
+            seen[o] = true
+            list[#list + 1] = o
         end
     end
 
-    -- local character
     local myChar = localPlayer.Character
     if myChar then add(myChar:FindFirstChild(FOOTBALL_NAME)) end
-
-    -- other characters
     for _, p in ipairs(Players:GetPlayers()) do
         if p == localPlayer then continue end
         local c = p.Character
         if c then add(c:FindFirstChild(FOOTBALL_NAME)) end
     end
 
-    -- workspace direct child
     add(workspace:FindFirstChild(FOOTBALL_NAME))
 
-    -- descendants (folders/models)
-    local kids = workspace:GetDescendants()
-    for i = 1, #kids do
-        local v = kids[i]
-        if v.Name == FOOTBALL_NAME then
-            add(v)
+    if #list == 0 or (refreshCounter % FULL_SCAN_EVERY == 0) then
+        local kids = workspace:GetDescendants()
+        local limit = #kids
+        if limit > FULL_SCAN_LIMIT then limit = FULL_SCAN_LIMIT end
+        for i = 1, limit do
+            local v = kids[i]
+            if v.Name == FOOTBALL_NAME then add(v) end
         end
     end
 
-    if #candidates == 0 then return nil end
+    ballList = list
+end
 
-    -- pick closest to local HRP
+local function findFootball()
+    refreshBallList()
+
+    for i = #ballList, 1, -1 do
+        local b = ballList[i]
+        if not b or not b.Parent then
+            table.remove(ballList, i)
+        end
+    end
+    if #ballList == 0 then return nil end
+
     local myPos = hrp and hrp.Position
-    if not myPos then return candidates[1] end
+    if not myPos then return ballList[1] end
 
     local best, bestDist = nil, math.huge
-    for i = 1, #candidates do
-        local c = candidates[i]
+    for i = 1, #ballList do
+        local c = ballList[i]
         local pos = ballPos(c)
         if pos then
             local d = (pos - myPos).Magnitude
@@ -215,53 +214,14 @@ local function scanForFootball()
             end
         end
     end
-    return best or candidates[1]
-end
-
-local function findFootball()
-    local now = tick()
-    if ballCache and ballCache.Parent then
-        local held = ballIsHeld(ballCache)
-        local win = held and BALL_SCAN_HELD or BALL_SCAN_FREE
-        if (now - ballCacheTime) < win then
-            return ballCache
-        end
-    end
-    ballCache = scanForFootball()
-    ballCacheTime = now
-    return ballCache
+    return best or ballList[1]
 end
 
 -------------------------------------------------
 -- AUTO RUSH HELPERS
 -------------------------------------------------
-local function pressW()
-    if wHeldByRush then return end
-    wHeldByRush = true
-    if VirtualInput then
-        pcall(function()
-            VirtualInput:SendKeyEvent(true, Enum.KeyCode.W, false, game)
-        end)
-    elseif keypress then
-        pcall(keypress, 0x57)
-    end
-end
-
-local function releaseW()
-    if not wHeldByRush then return end
-    wHeldByRush = false
-    if VirtualInput then
-        pcall(function()
-            VirtualInput:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-        end)
-    elseif keyrelease then
-        pcall(keyrelease, 0x57)
-    end
-end
-
 local function stopActiveRush()
     autoRushActive = false
-    releaseW()
     if humanoid then
         pcall(function() humanoid:Move(Vector3.zero, false) end)
     end
@@ -274,13 +234,15 @@ end
 
 local function toggleActiveRush()
     if not autoRushUnlocked then return end
-    if autoRushActive then
-        stopActiveRush()
-        Rayfield:Notify({Title="Auto Rush", Content="Off", Duration=3})
-    else
-        autoRushActive = true
-        Rayfield:Notify({Title="Auto Rush", Content="On — closest Football", Duration=3})
-    end
+    task.defer(function()
+        if autoRushActive then
+            stopActiveRush()
+            Rayfield:Notify({Title="Auto Rush", Content="Off", Duration=2})
+        else
+            autoRushActive = true
+            Rayfield:Notify({Title="Auto Rush", Content="On", Duration=2})
+        end
+    end)
 end
 
 -------------------------------------------------
@@ -607,8 +569,16 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Auto Rush
+    -- Auto Rush: velocity only. reads live WalkSpeed every frame.
     if autoRushUnlocked and autoRushActive and not isFlying and not stickyTarget then
+        if humanoid.PlatformStand then humanoid.PlatformStand = false end
+        if humanoid.Sit then humanoid.Sit = false end
+        if humanoid:GetState() == Enum.HumanoidStateType.Physics then
+            pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+
+        if humanoid.AutoRotate then humanoid.AutoRotate = false end
+
         local ball = findFootball()
         local bp = ballPos(ball)
         if bp then
@@ -617,23 +587,23 @@ RunService.Heartbeat:Connect(function(dt)
             local flatMag = flat.Magnitude
             if flatMag > 0.5 then
                 local dir = flat / flatMag
-
-                if CHASE_ORIENT then
+                local speed = humanoid.WalkSpeed
+                if speed > 0 then
                     local vel = hrp.AssemblyLinearVelocity
-                    hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + dir)
-                    hrp.AssemblyLinearVelocity = vel
+                    hrp.AssemblyLinearVelocity = Vector3.new(
+                        dir.X * speed,
+                        vel.Y,
+                        dir.Z * speed
+                    )
                 end
-
-                pcall(function() humanoid:Move(dir, false) end)
-            else
-                pcall(function() humanoid:Move(Vector3.zero, false) end)
             end
         end
-        pressW()
     elseif autoRushActive and (isFlying or stickyTarget) then
         stopActiveRush()
-    elseif not autoRushActive and wHeldByRush then
-        releaseW()
+    end
+
+    if not autoRushActive and humanoid and not humanoid.AutoRotate then
+        humanoid.AutoRotate = true
     end
 
     -- Flight
@@ -688,16 +658,6 @@ RunService.Heartbeat:Connect(function(dt)
             hrp.AssemblyAngularVelocity = Vector3.zero
             if not humanoid.PlatformStand then humanoid.PlatformStand = true end
             if humanoid.WalkSpeed ~= 0 then humanoid.WalkSpeed = 0 end
-
-            local animator = humanoid:FindFirstChildOfClass("Animator")
-            if animator then
-                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                    local id = track.Animation and track.Animation.AnimationId
-                    if id and id ~= SIDE_TECH_ANIM_ID then
-                        track:Stop(0)
-                    end
-                end
-            end
         end
     elseif stickyTarget and not stickyHeadEnabled then
         detachSticky()
@@ -768,7 +728,7 @@ TechTab:CreateSection("Sticky Head")
 TechTab:CreateToggle({Name="Sticky Head", Callback=function(v) stickyHeadEnabled=v end})
 
 Rayfield:Notify({
-    Title = "Auto Rush Targets Football Model",
-    Content = "Uses Football pivot, picks closest one.",
+    Title = "Ultimate Football Hub Loaded",
+    Content = "Auto Rush uses live WalkSpeed. Sprint changes it on the fly.",
     Duration = 5
 })
