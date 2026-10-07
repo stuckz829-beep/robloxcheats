@@ -50,6 +50,11 @@ local gravityVal = 196.2
 local walkSpeedLockSuspended = false
 local WALKSPEED_LOCK_THRESHOLD = 22
 
+-- Sticky apex wait
+local APEX_VELOCITY_THRESHOLD = 3.0
+local APEX_MAX_WAIT = 1.5
+local apexWaitStart = 0
+
 -- Stealth flight
 local isFlying = false
 local flySpeed = 50
@@ -606,8 +611,6 @@ local function bindCharacter(player, char)
     end)
 end
 
--- Stop any playing animation with Movement priority (Run/Walk).
--- Idle is Core priority, so it survives — you look idle while riding.
 local function stopMovementPriority(track)
     if not track then return end
     local ok, prio = pcall(function() return track.Priority end)
@@ -618,13 +621,11 @@ end
 
 local function silenceHumanoid()
     if not humanoid then return end
-    -- stop everything currently playing for a clean slate
     local animator = humanoid:FindFirstChildOfClass("Animator")
     if animator then
         for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
             pcall(function() track:Stop(0) end)
         end
-        -- then hook so any Run/Walk that tries to start gets killed
         if stickyAnimConn then pcall(function() stickyAnimConn:Disconnect() end) end
         stickyAnimConn = animator.AnimationPlayed:Connect(function(track)
             stopMovementPriority(track)
@@ -695,10 +696,10 @@ local function attachSticky(head)
     stickyReleaseInput = false
     attachTime = tick()
     walkSpeedLockSuspended = true
+    apexWaitStart = 0
     if hrp then
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
-        -- freeze rotation at attach time; only Y-axis matters for a standing character
         local cur = hrp.CFrame
         stickyLockedRotation = CFrame.Angles(0, math.atan2(-cur.LookVector.X, -cur.LookVector.Z), 0)
     end
@@ -736,6 +737,7 @@ local function hookChar(char)
         stickyTarget = nil
         stickyReleaseInput = false
         walkSpeedLockSuspended = false
+        apexWaitStart = 0
         if stickyAnimConn then pcall(function() stickyAnimConn:Disconnect() end); stickyAnimConn = nil end
         if humanoid then
             for state, _ in pairs(disabledStates) do humanoid:SetStateEnabled(state, true) end
@@ -979,6 +981,7 @@ RunService.Heartbeat:Connect(function(dt)
         if jumped then
             if stickyTarget then detachSticky() end
             for k in pairs(headSolid) do headSolid[k] = nil end
+            apexWaitStart = 0
         end
     end
     lastMyPos = hrp.Position
@@ -1095,6 +1098,11 @@ RunService.Heartbeat:Connect(function(dt)
 
     local hasBall = holdingFootball()
 
+    -- if we land before apex, cancel apex wait
+    if not isAirborne() then
+        apexWaitStart = 0
+    end
+
     if stickyHeadEnabled and not isFlying and not hasBall and not sideTechAnimPlaying then
         if stickyTarget then
             local parentChar = stickyTarget.Parent
@@ -1104,10 +1112,30 @@ RunService.Heartbeat:Connect(function(dt)
                 detachSticky()
             end
         end
+
         if not stickyTarget and stickyCooldown <= 0 and not anyMoveKeyDown() and isAirborne() then
-            local head = findNearestHead()
-            if head then attachSticky(head) end
+            local velY = hrp.AssemblyLinearVelocity.Y
+            local stillRising = velY > APEX_VELOCITY_THRESHOLD
+
+            if stillRising then
+                -- hold until apex
+                if apexWaitStart == 0 then
+                    apexWaitStart = now
+                end
+                -- safety timeout in case apex never registers
+                if (now - apexWaitStart) > APEX_MAX_WAIT then
+                    apexWaitStart = 0
+                    local head = findNearestHead()
+                    if head then attachSticky(head) end
+                end
+            else
+                -- apex reached (or already falling) — attach
+                apexWaitStart = 0
+                local head = findNearestHead()
+                if head then attachSticky(head) end
+            end
         end
+
         if stickyTarget then
             local offset = headTopOffset(stickyTarget)
             local desired = stickyTarget.CFrame * CFrame.new(offset)
@@ -1122,7 +1150,6 @@ RunService.Heartbeat:Connect(function(dt)
             if elapsed >= EASE_DURATION and (newPos - desired.Position).Magnitude < SNAP_THRESHOLD then
                 newPos = desired.Position
             end
-            -- position tracks the target, but rotation is frozen from attach time
             local rot = stickyLockedRotation or (hrp.CFrame - hrp.CFrame.Position)
             hrp.CFrame = CFrame.new(newPos) * rot
             hrp.AssemblyLinearVelocity = Vector3.zero
@@ -1325,6 +1352,6 @@ end)
 
 Rayfield:Notify({
     Title = "Ultimate Football Hub 2026",
-    Content = "Sticky: rotation frozen at attach + run anims killed while riding.",
+    Content = "Sticky now waits for jump apex before latching.",
     Duration = 6
 })
