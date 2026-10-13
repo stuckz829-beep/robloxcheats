@@ -15,7 +15,10 @@
 -- Rush Cut-Off: true intercept on his forward ray, then aim PAST the meeting
 --               point so we arrive ahead of him, not on his tail. No side
 --               bias, no chase-from-behind. Body ends up in his path.
--- Sticky Range: you can stick onto a head from up to 3 studs past the edge.
+-- Sticky Range: stick onto a head from up to 3 studs past the edge.
+-- Sticky Break: once stuck, if we're no longer physically above the head
+--               (knocked off, displaced, drifted), drop the stick. No
+--               magnet-lock to a head we aren't standing on.
 -- Mid-Possession Toggle: pressing R while someone already holds the ball seeds
 --               the carrier + engage timer same-tick.
 -- Auto Rush Arm-Only: the UI toggle only arms. It does NOT auto-engage when a
@@ -755,12 +758,12 @@ local FOOTBALL_NAME = "Football"
 
 -- Rush cut-off tuning. Aim = true intercept point on his forward ray, then
 -- pushed PAST the meeting point so we arrive ahead of him. No side bias.
-local RUSH_OVERSHOOT   = 1.5    -- multiply the intercept time to push aim past him
-local RUSH_FORWARD_MIN = 3.0    -- minimum studs the aim must sit ahead of him
-local RUSH_T_MIN       = 0.15   -- floor on intercept time
-local RUSH_T_MAX       = 1.2    -- ceiling on intercept time
-local TURN_RATE        = 30.0   -- rad/s heading slew (snappy)
-local YAW_DEAD_ZONE    = 0.02   -- rad — ignore micro-yaw jitter
+local RUSH_OVERSHOOT   = 1.5
+local RUSH_FORWARD_MIN = 3.0
+local RUSH_T_MIN       = 0.15
+local RUSH_T_MAX       = 1.2
+local TURN_RATE        = 30.0
+local YAW_DEAD_ZONE    = 0.02
 
 local rushEngageStartAt = 0
 local lastRushCarrier = nil
@@ -828,6 +831,11 @@ local refreshPinCF = nil
 -- Sticky attach range: 3 studs past the edge of the head.
 local FEET_OVER_HEAD_HORIZ_MARGIN = 3.0
 local FEET_OVER_HEAD_VERT_TOLERANCE = 0.3
+
+-- Sticky break hysteresis: once attached, we let the head drift a bit more
+-- than the attach range before dropping the stick. Stops flicker.
+local STICKY_BREAK_MARGIN = 4.5
+local STICKY_BREAK_VERT   = 0.5
 
 local PROXY_FOOTPRINT_PAD = 0.3
 local PROXY_FEET_ABOVE_TOLERANCE = 0.15
@@ -1290,8 +1298,6 @@ local function feetOverHead(head, horizMargin, vertTolerance)
     local dz = hrp.Position.Z - head.Position.Z
     local horizDist = math.sqrt(dx * dx + dz * dz)
 
-    -- horizMargin is measured from the EDGE of the head. Radius of the
-    -- head + margin gives the outer attach cylinder.
     local radius = math.max(eff.X * 0.5, eff.Z * 0.5) + horizMargin
     if horizDist > radius then return false end
 
@@ -2747,7 +2753,8 @@ track(RunService.Heartbeat:Connect(function(dt)
 
     if isFlying then
         if stickyTarget then detachSticky() end
-        if humanoid.PlatformStand then humanoid.PlatformStand = false end        if humanoid.Sit then humanoid.Sit = false end
+        if humanoid.PlatformStand then humanoid.PlatformStand = false end
+        if humanoid.Sit then humanoid.Sit = false end
         local s = humanoid:GetState()
         if s == Enum.HumanoidStateType.Physics then
             pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
@@ -2803,10 +2810,20 @@ track(RunService.Heartbeat:Connect(function(dt)
             local badState = targetInBadState(parentChar)
             local targetHoldsBall = parentChar and targetHasFootball(parentChar)
             local targetDiving = targetHeadDiving(stickyTarget)
-            if stickyReleaseInput or not stillAlive or badState or targetHoldsBall or targetDiving then
+
+            -- Geometric break: once the ease-in is done, if we're no longer
+            -- above the head (knocked off, displaced, drifted), drop the
+            -- stick. Stops the "magnet" look when we aren't on them.
+            local lostContact = false
+            if (now - attachTime) > EASE_DURATION then
+                lostContact = not feetOverHead(stickyTarget, STICKY_BREAK_MARGIN, STICKY_BREAK_VERT)
+            end
+
+            if stickyReleaseInput or not stillAlive or badState or targetHoldsBall or targetDiving or lostContact then
                 local reason = "other"
                 if stickyReleaseInput then reason = "input" end
                 if targetDiving then reason = "target_dive" end
+                if lostContact then reason = "lost_contact" end
                 detachSticky(reason)
             end
         end
@@ -3071,7 +3088,7 @@ registerSlider("rocketBoostChance", TechTab:CreateSlider({
 
 TechTab:CreateSection("Sticky Head")
 registerToggle("stickyHeadEnabled", TechTab:CreateToggle({
-    Name = "Sticky Head (3 studs from head edge; blocked while carrying)",
+    Name = "Sticky Head (3 studs from head edge; drops the stick if you leave the head)",
     CurrentValue = stickyHeadEnabled,
     Callback = function(v) stickyHeadEnabled = v; scheduleAutoSave() end
 }))
@@ -3151,6 +3168,6 @@ end
 
 Rayfield:Notify({
     Title = "Ultimate Football Hub 2026",
-    Content = "Loaded. Sticky head range = 3 studs from the edge. Rush cuts ahead.",
+    Content = "Loaded. Sticky head attaches at 3 studs, drops when you leave the head.",
     Duration = 6
 })
