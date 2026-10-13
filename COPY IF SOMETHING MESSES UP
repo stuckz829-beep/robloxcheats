@@ -1,10 +1,6 @@
--- Ultimate Football Hub 2026
--- Compact self-contained fallback UI, plus full feature set.
--- If sirius.menu loads, we use it. Otherwise the built-in UI runs.
+-- Ultimate Football Hub 2026 — compact full script
+-- Rayfield with self-contained fallback. All features intact.
 
--------------------------------------------------
--- RE-EXEC SYNC
--------------------------------------------------
 local STATE_KEY = "UFH_state_v1"
 local TEARDOWN_REGISTRY = "UFH_teardowns_v1"
 local DESTROY_KEY = "UFH_destroy_v1"
@@ -16,385 +12,273 @@ end
 getgenv()[TEARDOWN_REGISTRY] = {}
 
 local priorState = getgenv()[STATE_KEY]
-
 if getgenv()[DESTROY_KEY] then
     pcall(getgenv()[DESTROY_KEY])
     getgenv()[DESTROY_KEY] = nil
 end
 
 -------------------------------------------------
--- UI: Rayfield with compact fallback
+-- UI
 -------------------------------------------------
 local Rayfield
 
 local function buildFallbackUI()
-    local Players = game:GetService("Players")
     local UIS = game:GetService("UserInputService")
+    local lp = game:GetService("Players").LocalPlayer
     local CoreGui = game:GetService("CoreGui")
-    local lp = Players.LocalPlayer
 
     local function parentGui()
         if type(gethui) == "function" then
-            local ok, h = pcall(gethui)
-            if ok and h then return h end
+            local ok, h = pcall(gethui); if ok and h then return h end
         end
         return lp:FindFirstChild("PlayerGui") or CoreGui
     end
 
-    local T = {
-        bg = Color3.fromRGB(20,20,24),
-        panel = Color3.fromRGB(28,28,34),
-        panel2 = Color3.fromRGB(36,36,44),
-        text = Color3.fromRGB(230,230,235),
-        sub = Color3.fromRGB(150,150,160),
-        accent = Color3.fromRGB(90,140,220),
-        accent2 = Color3.fromRGB(60,100,180),
-        border = Color3.fromRGB(48,48,56),
-        on = Color3.fromRGB(90,200,120),
-        off = Color3.fromRGB(80,80,90),
-    }
+    local T = {bg=Color3.fromRGB(20,20,24), panel=Color3.fromRGB(28,28,34), panel2=Color3.fromRGB(36,36,44),
+        text=Color3.fromRGB(230,230,235), sub=Color3.fromRGB(150,150,160),
+        accent=Color3.fromRGB(90,140,220), accent2=Color3.fromRGB(60,100,180),
+        border=Color3.fromRGB(48,48,56), on=Color3.fromRGB(90,200,120), off=Color3.fromRGB(80,80,90)}
 
     local API = {notifications = {}}
     local activeWindow = nil
 
     local function mk(cls, props, parent)
         local i = Instance.new(cls)
-        for k,v in pairs(props or {}) do i[k] = v end
+        for k,v in pairs(props or {}) do i[k]=v end
         if parent then i.Parent = parent end
         return i
     end
-    local function corner(p, r) mk("UICorner", {CornerRadius = UDim.new(0, r or 6)}, p) end
-
-    local function draggable(frame, handle)
-        handle = handle or frame
-        local drag, start, sp
-        handle.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-                drag = true; start = inp.Position; sp = frame.Position
-            end
-        end)
-        handle.InputEnded:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-                drag = false
-            end
-        end)
-        UIS.InputChanged:Connect(function(inp)
-            if not drag then return end
-            if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-            and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-            local d = inp.Position - start
-            frame.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-        end)
-    end
+    local function corner(p,r) mk("UICorner",{CornerRadius=UDim.new(0,r or 6)},p) end
 
     local TabMethods = {}
 
-    function TabMethods:CreateSection(text)
-        local h = mk("Frame", {Size = UDim2.new(1,0,0,22), BackgroundTransparency = 1, Parent = self.__page})
-        mk("TextLabel", {
-            Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1,
-            Text = text, TextColor3 = T.sub, Font = Enum.Font.GothamBold,
-            TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Parent = h,
-        })
+    function TabMethods:CreateSection(t)
+        local h = mk("Frame",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,Parent=self.__page})
+        mk("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=t,
+            TextColor3=T.sub,Font=Enum.Font.GothamBold,TextSize=12,
+            TextXAlignment=Enum.TextXAlignment.Left,Parent=h})
         return h
     end
-
-    function TabMethods:CreateButton(opts)
-        local b = mk("TextButton", {
-            Size = UDim2.new(1,0,0,28), BackgroundColor3 = T.panel2, BorderSizePixel = 0,
-            Text = opts.Name or "Button", TextColor3 = T.text, Font = Enum.Font.Gotham,
-            TextSize = 13, AutoButtonColor = false, Parent = self.__page,
-        })
-        corner(b, 5)
-        b.MouseButton1Click:Connect(function() if opts.Callback then pcall(opts.Callback) end end)
-        return {Set = function() end}
+    function TabMethods:CreateButton(o)
+        local b = mk("TextButton",{Size=UDim2.new(1,0,0,26),BackgroundColor3=T.panel2,
+            BorderSizePixel=0,Text=o.Name or "Button",TextColor3=T.text,
+            Font=Enum.Font.Gotham,TextSize=12,AutoButtonColor=false,Parent=self.__page})
+        corner(b,5)
+        b.MouseButton1Click:Connect(function() if o.Callback then pcall(o.Callback) end end)
+        return {Set=function() end}
     end
-
-    function TabMethods:CreateToggle(opts)
-        local row = mk("Frame", {
-            Size = UDim2.new(1,0,0,26), BackgroundColor3 = T.panel2,
-            BorderSizePixel = 0, Parent = self.__page,
-        })
-        corner(row, 5)
-        mk("TextLabel", {
-            Size = UDim2.new(1,-56,1,0), Position = UDim2.new(0,8,0,0),
-            BackgroundTransparency = 1, Text = opts.Name or "Toggle",
-            TextColor3 = T.text, Font = Enum.Font.Gotham, TextSize = 12,
-            TextXAlignment = Enum.TextXAlignment.Left, Parent = row,
-        })
-        local knob = mk("Frame", {
-            Size = UDim2.new(0,36,0,16), Position = UDim2.new(1,-44,0.5,-8),
-            BackgroundColor3 = T.off, BorderSizePixel = 0, Parent = row,
-        })
-        corner(knob, 8)
-        local dot = mk("Frame", {
-            Size = UDim2.new(0,12,0,12), Position = UDim2.new(0,2,0.5,-6),
-            BackgroundColor3 = Color3.fromRGB(240,240,240), BorderSizePixel = 0, Parent = knob,
-        })
-        corner(dot, 6)
-        local state = opts.CurrentValue == true
-        local function render()
-            knob.BackgroundColor3 = state and T.on or T.off
-            dot.Position = state and UDim2.new(1,-14,0.5,-6) or UDim2.new(0,2,0.5,-6)
+    function TabMethods:CreateToggle(o)
+        local r = mk("Frame",{Size=UDim2.new(1,0,0,24),BackgroundColor3=T.panel2,
+            BorderSizePixel=0,Parent=self.__page})
+        corner(r,5)
+        mk("TextLabel",{Size=UDim2.new(1,-52,1,0),Position=UDim2.new(0,8,0,0),
+            BackgroundTransparency=1,Text=o.Name or "Toggle",TextColor3=T.text,
+            Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,Parent=r})
+        local k = mk("Frame",{Size=UDim2.new(0,34,0,14),Position=UDim2.new(1,-42,0.5,-7),
+            BackgroundColor3=T.off,BorderSizePixel=0,Parent=r})
+        corner(k,7)
+        local d = mk("Frame",{Size=UDim2.new(0,10,0,10),Position=UDim2.new(0,2,0.5,-5),
+            BackgroundColor3=Color3.fromRGB(240,240,240),BorderSizePixel=0,Parent=k})
+        corner(d,5)
+        local s = o.CurrentValue == true
+        local function rnd()
+            k.BackgroundColor3 = s and T.on or T.off
+            d.Position = s and UDim2.new(1,-12,0.5,-5) or UDim2.new(0,2,0.5,-5)
         end
-        render()
-        local btn = mk("TextButton", {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Text = "", Parent = row})
-        btn.MouseButton1Click:Connect(function()
-            state = not state
-            render()
-            if opts.Callback then pcall(opts.Callback, state) end
+        rnd()
+        local bt = mk("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=r})
+        bt.MouseButton1Click:Connect(function()
+            s = not s; rnd()
+            if o.Callback then pcall(o.Callback, s) end
         end)
-        local api = {}
-        function api:Set(v) state = v == true; render() end
+        local api = {}; function api:Set(v) s = v==true; rnd() end
         return api
     end
-
-    function TabMethods:CreateSlider(opts)
-        local row = mk("Frame", {
-            Size = UDim2.new(1,0,0,38), BackgroundColor3 = T.panel2,
-            BorderSizePixel = 0, Parent = self.__page,
-        })
-        corner(row, 5)
-        mk("TextLabel", {
-            Size = UDim2.new(1,-80,0,18), Position = UDim2.new(0,8,0,2),
-            BackgroundTransparency = 1, Text = opts.Name or "Slider",
-            TextColor3 = T.text, Font = Enum.Font.Gotham, TextSize = 12,
-            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
-        })
-        local valLbl = mk("TextLabel", {
-            Size = UDim2.new(0,60,0,18), Position = UDim2.new(1,-68,0,2),
-            BackgroundTransparency = 1, Text = tostring(opts.CurrentValue or 0),
-            TextColor3 = T.sub, Font = Enum.Font.Gotham, TextSize = 12,
-            TextXAlignment = Enum.TextXAlignment.Right, Parent = row,
-        })
-        local bar = mk("Frame", {
-            Size = UDim2.new(1,-20,0,6), Position = UDim2.new(0,10,1,-14),
-            BackgroundColor3 = T.off, BorderSizePixel = 0, Parent = row,
-        })
-        corner(bar, 3)
-        local fill = mk("Frame", {
-            Size = UDim2.new(0,0,1,0), BackgroundColor3 = T.accent,
-            BorderSizePixel = 0, Parent = bar,
-        })
-        corner(fill, 3)
-        local minV = opts.Range and opts.Range[1] or 0
-        local maxV = opts.Range and opts.Range[2] or 100
-        local inc = opts.Increment or 1
-        local value = opts.CurrentValue or minV
-        local function clampInc(v)
-            local steps = math.floor((v - minV)/inc + 0.5)
-            return math.clamp(minV + steps*inc, minV, maxV)
+    function TabMethods:CreateSlider(o)
+        local r = mk("Frame",{Size=UDim2.new(1,0,0,34),BackgroundColor3=T.panel2,
+            BorderSizePixel=0,Parent=self.__page})
+        corner(r,5)
+        mk("TextLabel",{Size=UDim2.new(1,-72,0,16),Position=UDim2.new(0,8,0,1),
+            BackgroundTransparency=1,Text=o.Name or "Slider",TextColor3=T.text,
+            Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Left,
+            TextTruncate=Enum.TextTruncate.AtEnd,Parent=r})
+        local vl = mk("TextLabel",{Size=UDim2.new(0,56,0,16),Position=UDim2.new(1,-60,0,1),
+            BackgroundTransparency=1,Text=tostring(o.CurrentValue or 0),TextColor3=T.sub,
+            Font=Enum.Font.Gotham,TextSize=11,TextXAlignment=Enum.TextXAlignment.Right,Parent=r})
+        local bar = mk("Frame",{Size=UDim2.new(1,-16,0,5),Position=UDim2.new(0,8,1,-12),
+            BackgroundColor3=T.off,BorderSizePixel=0,Parent=r})
+        corner(bar,2)
+        local fill = mk("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=T.accent,
+            BorderSizePixel=0,Parent=bar})
+        corner(fill,2)
+        local minV = o.Range and o.Range[1] or 0
+        local maxV = o.Range and o.Range[2] or 100
+        local inc = o.Increment or 1
+        local v = o.CurrentValue or minV
+        local function ci(x)
+            local st = math.floor((x - minV)/inc + 0.5)
+            return math.clamp(minV + st*inc, minV, maxV)
         end
-        local function render()
-            fill.Size = UDim2.new((value-minV)/math.max(1e-6,(maxV-minV)),0,1,0)
-            valLbl.Text = tostring(value)
+        local function rnd()
+            fill.Size = UDim2.new((v-minV)/math.max(1e-6,(maxV-minV)),0,1,0)
+            vl.Text = tostring(v)
         end
-        render()
-        local dragging = false
+        rnd()
+        local dr = false
         local function upd(x)
             local rel = math.clamp((x - bar.AbsolutePosition.X)/math.max(1,bar.AbsoluteSize.X),0,1)
-            value = clampInc(minV + rel*(maxV-minV))
-            render()
-            if opts.Callback then pcall(opts.Callback, value) end
+            v = ci(minV + rel*(maxV-minV)); rnd()
+            if o.Callback then pcall(o.Callback, v) end
         end
-        bar.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                upd(inp.Position.X)
+        bar.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                dr=true; upd(i.Position.X)
             end
         end)
-        UIS.InputChanged:Connect(function(inp)
-            if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
-            or inp.UserInputType == Enum.UserInputType.Touch) then
-                upd(inp.Position.X)
+        UIS.InputChanged:Connect(function(i)
+            if dr and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+                upd(i.Position.X)
             end
         end)
-        UIS.InputEnded:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1
-            or inp.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
+        UIS.InputEnded:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=false end
         end)
-        local api = {}
-        function api:Set(v) value = clampInc(tonumber(v) or value); render() end
+        local api = {}; function api:Set(x) v = ci(tonumber(x) or v); rnd() end
         return api
     end
 
     local WindowMethods = {}
 
     function WindowMethods:CreateTab(name)
-        local tb = mk("TextButton", {
-            Size = UDim2.new(1,0,0,28), BackgroundColor3 = T.panel2,
-            BorderSizePixel = 0, Text = "", AutoButtonColor = false, Parent = self.__sidebar,
-        })
-        corner(tb, 5)
-        local lbl = mk("TextLabel", {
-            Size = UDim2.new(1,-12,1,0), Position = UDim2.new(0,6,0,0),
-            BackgroundTransparency = 1, Text = name, TextColor3 = T.sub,
-            Font = Enum.Font.Gotham, TextSize = 13,
-            TextXAlignment = Enum.TextXAlignment.Left, Parent = tb,
-        })
-        local page = mk("ScrollingFrame", {
-            Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1,
-            BorderSizePixel = 0, ScrollBarThickness = 4,
-            ScrollBarImageColor3 = T.accent, CanvasSize = UDim2.new(0,0,0,0),
-            Visible = false, Parent = self.__content,
-        })
-        local layout = mk("UIListLayout", {
-            Padding = UDim.new(0,4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = page,
-        })
-        mk("UIPadding", {
-            PaddingTop = UDim.new(0,6), PaddingBottom = UDim.new(0,6),
-            PaddingLeft = UDim.new(0,8), PaddingRight = UDim.new(0,8), Parent = page,
-        })
-        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            page.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y + 16)
+        local tb = mk("TextButton",{Size=UDim2.new(1,0,0,26),BackgroundColor3=T.panel2,
+            BorderSizePixel=0,Text="",AutoButtonColor=false,Parent=self.__sidebar})
+        corner(tb,5)
+        local lb = mk("TextLabel",{Size=UDim2.new(1,-10,1,0),Position=UDim2.new(0,5,0,0),
+            BackgroundTransparency=1,Text=name,TextColor3=T.sub,Font=Enum.Font.Gotham,
+            TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,Parent=tb})
+        local pg = mk("ScrollingFrame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+            BorderSizePixel=0,ScrollBarThickness=4,ScrollBarImageColor3=T.accent,
+            CanvasSize=UDim2.new(0,0,0,0),Visible=false,Parent=self.__content})
+        local lay = mk("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder,Parent=pg})
+        mk("UIPadding",{PaddingTop=UDim.new(0,6),PaddingBottom=UDim.new(0,6),
+            PaddingLeft=UDim.new(0,8),PaddingRight=UDim.new(0,8),Parent=pg})
+        lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            pg.CanvasSize = UDim2.new(0,0,0,lay.AbsoluteContentSize.Y+16)
         end)
-        local tab = setmetatable({__page = page, __btn = tb, __label = lbl}, {__index = TabMethods})
+        local tab = setmetatable({__page=pg,__btn=tb,__label=lb},{__index=TabMethods})
         tb.MouseButton1Click:Connect(function()
-            for _, o in ipairs(self.__tabs) do
-                o.__page.Visible = false
-                o.__label.TextColor3 = T.sub
-                o.__btn.BackgroundColor3 = T.panel2
+            for _,o in ipairs(self.__tabs) do
+                o.__page.Visible=false; o.__label.TextColor3=T.sub; o.__btn.BackgroundColor3=T.panel2
             end
-            page.Visible = true
-            lbl.TextColor3 = T.text
-            tb.BackgroundColor3 = T.accent2
+            pg.Visible=true; lb.TextColor3=T.text; tb.BackgroundColor3=T.accent2
         end)
-        table.insert(self.__tabs, tab)
-        if #self.__tabs == 1 then
-            page.Visible = true
-            lbl.TextColor3 = T.text
-            tb.BackgroundColor3 = T.accent2
+        table.insert(self.__tabs,tab)
+        if #self.__tabs==1 then
+            pg.Visible=true; lb.TextColor3=T.text; tb.BackgroundColor3=T.accent2
         end
         return tab
     end
-
     function WindowMethods:Destroy()
         if self.__gui then self.__gui:Destroy() end
-        if activeWindow == self then activeWindow = nil end
+        if activeWindow==self then activeWindow=nil end
     end
 
-    function API:Notify(opts)
+    function API:Notify(o)
         if not API.__notifyGui or not API.__notifyGui.Parent then
-            API.__notifyGui = mk("ScreenGui", {
-                Name = "UFH_Notify", ResetOnSpawn = false,
-                ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = parentGui(),
-            })
+            API.__notifyGui = mk("ScreenGui",{Name="UFH_Notify",ResetOnSpawn=false,
+                ZIndexBehavior=Enum.ZIndexBehavior.Sibling,Parent=parentGui()})
         end
-        local h = mk("Frame", {
-            Size = UDim2.new(0,260,0,54),
-            Position = UDim2.new(1,-280,0,#API.notifications*64 + 20),
-            BackgroundColor3 = T.bg, BorderSizePixel = 0, Parent = API.__notifyGui,
-        })
-        corner(h, 7)
-        mk("TextLabel", {
-            Size = UDim2.new(1,-12,0,18), Position = UDim2.new(0,6,0,6),
-            BackgroundTransparency = 1, Text = opts.Title or "",
-            TextColor3 = T.accent, Font = Enum.Font.GothamBold, TextSize = 13,
-            TextXAlignment = Enum.TextXAlignment.Left, Parent = h,
-        })
-        mk("TextLabel", {
-            Size = UDim2.new(1,-12,0,26), Position = UDim2.new(0,6,0,22),
-            BackgroundTransparency = 1, Text = opts.Content or "",
-            TextColor3 = T.text, Font = Enum.Font.Gotham, TextSize = 11,
-            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Top, Parent = h,
-        })
-        table.insert(API.notifications, h)
-        task.delay(opts.Duration or 4, function()
+        local h = mk("Frame",{Size=UDim2.new(0,250,0,50),
+            Position=UDim2.new(1,-270,0,#API.notifications*60+16),
+            BackgroundColor3=T.bg,BorderSizePixel=0,Parent=API.__notifyGui})
+        corner(h,6)
+        mk("TextLabel",{Size=UDim2.new(1,-10,0,16),Position=UDim2.new(0,5,0,5),
+            BackgroundTransparency=1,Text=o.Title or "",TextColor3=T.accent,
+            Font=Enum.Font.GothamBold,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,Parent=h})
+        mk("TextLabel",{Size=UDim2.new(1,-10,0,26),Position=UDim2.new(0,5,0,20),
+            BackgroundTransparency=1,Text=o.Content or "",TextColor3=T.text,
+            Font=Enum.Font.Gotham,TextSize=10,TextWrapped=true,
+            TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,Parent=h})
+        table.insert(API.notifications,h)
+        task.delay(o.Duration or 4, function()
             for i,x in ipairs(API.notifications) do
-                if x == h then table.remove(API.notifications, i); break end
+                if x==h then table.remove(API.notifications,i); break end
             end
             if h.Parent then h:Destroy() end
             for i,x in ipairs(API.notifications) do
-                x.Position = UDim2.new(1,-280,0,(i-1)*64 + 20)
+                x.Position = UDim2.new(1,-270,0,(i-1)*60+16)
             end
         end)
     end
 
-    function API:CreateWindow(opts)
+    function API:CreateWindow(o)
         if activeWindow then pcall(function() activeWindow:Destroy() end) end
-        local gui = mk("ScreenGui", {
-            Name = "UFH_" .. (opts.Name or "Window"),
-            ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-            Parent = parentGui(),
-        })
-        local root = mk("Frame", {
-            Size = UDim2.new(0,500,0,340),
-            Position = UDim2.new(0.5,-250,0.5,-170),
-            BackgroundColor3 = T.bg, BorderSizePixel = 0, Active = true, Parent = gui,
-        })
-        corner(root, 10)
-        mk("UIStroke", {Color = T.border, Thickness = 1}, root)
-        draggable(root, root)
-        local header = mk("Frame", {
-            Size = UDim2.new(1,0,0,36), BackgroundColor3 = T.panel,
-            BorderSizePixel = 0, Parent = root,
-        })
-        corner(header, 10)
-        mk("TextLabel", {
-            Size = UDim2.new(1,-40,1,0), Position = UDim2.new(0,12,0,0),
-            BackgroundTransparency = 1, Text = opts.Name or "Window",
-            TextColor3 = T.text, Font = Enum.Font.GothamBold, TextSize = 15,
-            TextXAlignment = Enum.TextXAlignment.Left, Parent = header,
-        })
-        local close = mk("TextButton", {
-            Size = UDim2.new(0,26,0,26), Position = UDim2.new(1,-32,0.5,-13),
-            BackgroundColor3 = T.panel2, Text = "x", TextColor3 = T.text,
-            Font = Enum.Font.GothamBold, TextSize = 15, AutoButtonColor = false, Parent = header,
-        })
-        corner(close, 5)
-        close.MouseButton1Click:Connect(function() gui.Enabled = false end)
-        local sidebar = mk("Frame", {
-            Size = UDim2.new(0,120,1,-44), Position = UDim2.new(0,6,0,42),
-            BackgroundColor3 = T.panel, BorderSizePixel = 0, Parent = root,
-        })
-        corner(sidebar, 8)
-        mk("UIListLayout", {Padding = UDim.new(0,4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = sidebar})
-        mk("UIPadding", {PaddingTop = UDim.new(0,6), PaddingLeft = UDim.new(0,6), PaddingRight = UDim.new(0,6), Parent = sidebar})
-        local content = mk("Frame", {
-            Size = UDim2.new(1,-136,1,-44), Position = UDim2.new(0,130,0,42),
-            BackgroundColor3 = T.panel, BorderSizePixel = 0, Parent = root,
-        })
-        corner(content, 8)
-        local W = setmetatable({
-            __gui = gui, __root = root, __sidebar = sidebar,
-            __content = content, __tabs = {},
-        }, {__index = WindowMethods})
+        local gui = mk("ScreenGui",{Name="UFH_"..(o.Name or "Window"),
+            ResetOnSpawn=false,ZIndexBehavior=Enum.ZIndexBehavior.Sibling,Parent=parentGui()})
+        local root = mk("Frame",{Size=UDim2.new(0,500,0,340),
+            Position=UDim2.new(0.5,-250,0.5,-170),
+            BackgroundColor3=T.bg,BorderSizePixel=0,Active=true,Parent=gui})
+        corner(root,10)
+        mk("UIStroke",{Color=T.border,Thickness=1},root)
+        local drag, start, sp
+        root.InputBegan:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                drag=true; start=i.Position; sp=root.Position
+            end
+        end)
+        root.InputEnded:Connect(function(i)
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+        end)
+        UIS.InputChanged:Connect(function(i)
+            if not drag then return end
+            if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then
+                local d = i.Position - start
+                root.Position = UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)
+            end
+        end)
+        local hdr = mk("Frame",{Size=UDim2.new(1,0,0,34),BackgroundColor3=T.panel,
+            BorderSizePixel=0,Parent=root})
+        corner(hdr,10)
+        mk("TextLabel",{Size=UDim2.new(1,-40,1,0),Position=UDim2.new(0,10,0,0),
+            BackgroundTransparency=1,Text=o.Name or "Window",TextColor3=T.text,
+            Font=Enum.Font.GothamBold,TextSize=14,TextXAlignment=Enum.TextXAlignment.Left,Parent=hdr})
+        local cls = mk("TextButton",{Size=UDim2.new(0,24,0,24),Position=UDim2.new(1,-30,0.5,-12),
+            BackgroundColor3=T.panel2,Text="x",TextColor3=T.text,Font=Enum.Font.GothamBold,
+            TextSize=14,AutoButtonColor=false,Parent=hdr})
+        corner(cls,5)
+        cls.MouseButton1Click:Connect(function() gui.Enabled=false end)
+        local sbar = mk("Frame",{Size=UDim2.new(0,116,1,-42),Position=UDim2.new(0,6,0,40),
+            BackgroundColor3=T.panel,BorderSizePixel=0,Parent=root})
+        corner(sbar,7)
+        mk("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder,Parent=sbar})
+        mk("UIPadding",{PaddingTop=UDim.new(0,6),PaddingLeft=UDim.new(0,6),PaddingRight=UDim.new(0,6),Parent=sbar})
+        local cont = mk("Frame",{Size=UDim2.new(1,-128,1,-42),Position=UDim2.new(0,124,0,40),
+            BackgroundColor3=T.panel,BorderSizePixel=0,Parent=root})
+        corner(cont,7)
+        local W = setmetatable({__gui=gui,__root=root,__sidebar=sbar,__content=cont,__tabs={}},{__index=WindowMethods})
         activeWindow = W
         return W
     end
 
     function API:Destroy()
-        if activeWindow then
-            pcall(function() activeWindow:Destroy() end)
-            activeWindow = nil
-        end
+        if activeWindow then pcall(function() activeWindow:Destroy() end); activeWindow=nil end
     end
-
     return API
 end
 
 do
-    local ok, result = pcall(function()
-        return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
-    end)
-    if ok and type(result) == "table" and type(result.CreateWindow) == "function" then
-        Rayfield = result
+    local ok, res = pcall(function() return loadstring(game:HttpGet("https://sirius.menu/rayfield"))() end)
+    if ok and type(res)=="table" and type(res.CreateWindow)=="function" then
+        Rayfield = res
     else
         warn("[UFH] Rayfield unavailable — using built-in UI.")
         Rayfield = buildFallbackUI()
     end
 end
-
 pcall(function() getgenv().SecureMode = true end)
 
 -------------------------------------------------
--- SERVICES / STATE
+-- SERVICES
 -------------------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -403,62 +287,57 @@ local HttpService = game:GetService("HttpService")
 local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-local hasFileApi = (type(writefile) == "function" and type(readfile) == "function")
+local hasFileApi = (type(writefile)=="function" and type(readfile)=="function")
 local CONFIG_PATH = "UltimateFootballHub_auto.json"
 
 local function readAutoConfig()
     if not hasFileApi then return nil end
-    if type(isfile) == "function" and not isfile(CONFIG_PATH) then return nil end
-    local ok, contents = pcall(function() return readfile(CONFIG_PATH) end)
-    if not ok or not contents or contents == "" then return nil end
-    local dok, decoded = pcall(function() return HttpService:JSONDecode(contents) end)
-    if not dok then return nil end
-    return decoded
+    if type(isfile)=="function" and not isfile(CONFIG_PATH) then return nil end
+    local ok, c = pcall(function() return readfile(CONFIG_PATH) end)
+    if not ok or not c or c=="" then return nil end
+    local d, dec = pcall(function() return HttpService:JSONDecode(c) end)
+    if not d then return nil end
+    return dec
 end
-
 local function writeAutoConfig(data)
     if not hasFileApi then return false end
-    local ok, encoded = pcall(function() return HttpService:JSONEncode(data) end)
+    local ok, e = pcall(function() return HttpService:JSONEncode(data) end)
     if not ok then return false end
-    return pcall(function() writefile(CONFIG_PATH, encoded) end)
+    return pcall(function() writefile(CONFIG_PATH, e) end)
 end
-
 local function deleteAutoConfig()
-    if type(delfile) == "function" then
-        pcall(function() delfile(CONFIG_PATH) end)
-    elseif hasFileApi then
-        pcall(function() writefile(CONFIG_PATH, "{}") end)
-    end
+    if type(delfile)=="function" then pcall(function() delfile(CONFIG_PATH) end)
+    elseif hasFileApi then pcall(function() writefile(CONFIG_PATH,"{}") end) end
 end
 
 local DEFAULT_STATE = {
-    walkSpeed = 18, gravityVal = 196.2,
-    isFlying = false, flySpeed = 50,
-    pullVectorEnabled = false, pullSpeed = 20,
-    autoRushUnlocked = false,
-    isHeadModEnabled = false, targetHeadScale = 4,
-    autoSideTechEnabled = false,
-    diveBoostEnabled = false, diveBoostLevel = 1.0,
-    rocketBoostEnabled = true, rocketBoostChance = 100,
-    stickyHeadEnabled = false,
-    jumpBoostEnabled = false, jumpBoostStuds = 15, jumpBoostChance = 100,
-    noclipEnabled = false,
-    autoLoadEnabled = false, headsInvisibleEnabled = false,
+    walkSpeed=18, gravityVal=196.2,
+    isFlying=false, flySpeed=50,
+    pullVectorEnabled=false, pullSpeed=20,
+    autoRushUnlocked=false,
+    isHeadModEnabled=false, targetHeadScale=4,
+    autoSideTechEnabled=false,
+    diveBoostEnabled=false, diveBoostLevel=1.0,
+    rocketBoostEnabled=true, rocketBoostChance=100,
+    stickyHeadEnabled=false,
+    jumpBoostEnabled=false, jumpBoostStuds=15, jumpBoostChance=100,
+    noclipEnabled=false,
+    autoLoadEnabled=false, headsInvisibleEnabled=false,
 }
 
 local state
-if type(priorState) == "table" then
+if type(priorState)=="table" then
     state = priorState
-    for k,v in pairs(DEFAULT_STATE) do if state[k] == nil then state[k] = v end end
+    for k,v in pairs(DEFAULT_STATE) do if state[k]==nil then state[k]=v end end
 else
     state = {}
-    for k,v in pairs(DEFAULT_STATE) do state[k] = v end
+    for k,v in pairs(DEFAULT_STATE) do state[k]=v end
     getgenv()[STATE_KEY] = state
 end
 
 local conns = {}
 local alive = true
-local function track(c) if c then conns[#conns+1] = c end; return c end
+local function track(c) if c then conns[#conns+1]=c end return c end
 
 -------------------------------------------------
 -- GLOBALS
@@ -501,6 +380,7 @@ local jumpBoostHoldUntil = 0
 local jumpBoostHoldVelocity = 0
 local jumpBoostStickyCooldown = 0
 local JUMP_BOOST_STICKY_COOLDOWN = 0.6
+local JUMP_BOOST_HOLD_TIME = 0.16
 
 local isHeadModEnabled = state.isHeadModEnabled
 local targetHeadScale = state.targetHeadScale
@@ -525,7 +405,7 @@ local YAW_DEAD_ZONE    = 0.02
 
 local rushEngageStartAt = 0
 local lastRushCarrier = nil
-local QB_CHEST_OFFSET = Vector3.new(0, 1.2, 0)
+local QB_CHEST_OFFSET = Vector3.new(0,1.2,0)
 
 local SWAT_RANGE = 30
 local SWAT_COOLDOWN = 0.35
@@ -567,13 +447,13 @@ local stickyReattachLocked = false
 local stickyLockOffSince = nil
 local STICKY_LOCK_CLEAR_DELAY = 0.3
 
-local proxyEngaged = setmetatable({}, {__mode = "k"})
+local proxyEngaged = setmetatable({},{__mode="k"})
 local PROXY_ENGAGED_PAD = 1.5
 local stickyTargetJumpConn = nil
 local headProxies = {}
 
 local headsInvisibleEnabled = state.headsInvisibleEnabled
-local origTransparency = setmetatable({}, {__mode = "k"})
+local origTransparency = setmetatable({},{__mode="k"})
 local HEAD_EXTENDER_TRANSPARENCY = 0.5
 
 local savedRefreshCFrame = nil
@@ -586,9 +466,8 @@ local FEET_OVER_HEAD_VERT_TOLERANCE = 0.3
 local STICKY_BREAK_MARGIN = 4.5
 local STICKY_BREAK_VERT   = 1.0
 
--- Dive detection cache
-local STICKY_DIVE_Y_VELOCITY = -12   -- HRP downward vel that counts as a dive
-local targetDiveCache = setmetatable({}, {__mode = "k"})
+local STICKY_DIVE_Y_VELOCITY = -12
+local targetDiveCache = setmetatable({},{__mode="k"})
 
 local lastOnHeadAt = 0
 local lastOnHeadRef = nil
@@ -613,10 +492,9 @@ local TELEPORT_THRESHOLD = 30
 
 local humanoid, hrp
 local walkSpeedConn = nil
-
 local headCache = {}
-local origSizes = setmetatable({}, {__mode = "k"})
-local origCanCollide = setmetatable({}, {__mode = "k"})
+local origSizes = setmetatable({},{__mode="k"})
+local origCanCollide = setmetatable({},{__mode="k"})
 local ballList = {}
 local refreshCounter = 0
 
@@ -626,7 +504,7 @@ refreshPlayerCache()
 track(Players.PlayerAdded:Connect(function() refreshPlayerCache() end))
 track(Players.PlayerRemoving:Connect(function() refreshPlayerCache() end))
 
-local targetJumpConns = setmetatable({}, {__mode = "k"})
+local targetJumpConns = setmetatable({},{__mode="k"})
 local ballCarrierChar = nil
 
 local autoLoadEnabled = state.autoLoadEnabled
@@ -640,20 +518,19 @@ local ORIG_SIZE_ATTR = "UFH_origSize"
 local function recomputeDiveBoost() diveBoostSpeed = (diveBoostLevel - 1) * DIVE_LEVEL_STEP end
 recomputeDiveBoost()
 
-local function studsToVelocity(studs)
+local function studsToVelocity(s)
     local g = workspace.Gravity
     if g <= 0 then g = 196.2 end
-    return math.sqrt(2 * g * math.max(0, studs))
+    return math.sqrt(2 * g * math.max(0, s))
 end
 
 local function smoothstep(t)
     if t <= 0 then return 0 end
     if t >= 1 then return 1 end
-    return t * t * (3 - 2 * t)
+    return t*t*(3-2*t)
 end
 
-local function angleDelta(a, b) return (b - a + math.pi) % (2*math.pi) - math.pi end
-
+local function angleDelta(a,b) return (b-a+math.pi)%(2*math.pi)-math.pi end
 local function yawFromCFrame(cf)
     local look = cf.LookVector
     return math.atan2(-look.X, -look.Z)
@@ -670,37 +547,36 @@ local function anyMoveKeyDown()
         or UIS:IsKeyDown(Enum.KeyCode.S) or UIS:IsKeyDown(Enum.KeyCode.D)
 end
 local function holdingFootball()
-    local char = localPlayer.Character
-    if not char then return false end
-    return char:FindFirstChild(FOOTBALL_NAME) ~= nil
+    local c = localPlayer.Character
+    if not c then return false end
+    return c:FindFirstChild(FOOTBALL_NAME) ~= nil
 end
-local function targetHasFootball(char)
-    if not char then return false end
-    return char:FindFirstChild(FOOTBALL_NAME) ~= nil
+local function targetHasFootball(c)
+    if not c then return false end
+    return c:FindFirstChild(FOOTBALL_NAME) ~= nil
 end
-local function targetInBadState(char)
-    if not char or char.Parent ~= workspace then return true end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return true end
+local function targetInBadState(c)
+    if not c or c.Parent ~= workspace then return true end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    if not h or h.Health <= 0 then return true end
     return false
 end
-
-local function resolveBallPart(ball)
-    if not ball then return nil end
-    if ball:IsA("BasePart") then return ball end
-    if ball:IsA("Tool") then
-        local h = ball:FindFirstChild("Handle")
+local function resolveBallPart(b)
+    if not b then return nil end
+    if b:IsA("BasePart") then return b end
+    if b:IsA("Tool") then
+        local h = b:FindFirstChild("Handle")
         if h and h:IsA("BasePart") then return h end
     end
-    if ball:IsA("Model") then
-        local pp = ball.PrimaryPart
+    if b:IsA("Model") then
+        local pp = b.PrimaryPart
         if pp then return pp end
     end
-    return ball:FindFirstChildWhichIsA("BasePart", true)
+    return b:FindFirstChildWhichIsA("BasePart", true)
 end
-local function ballPos(ball)
-    local part = resolveBallPart(ball)
-    return part and part.Position or nil
+local function ballPos(b)
+    local p = resolveBallPart(b)
+    return p and p.Position or nil
 end
 
 local function effectiveHeadSize(head)
@@ -711,46 +587,39 @@ end
 
 local function getFeetY()
     if not hrp or not humanoid then return nil end
-    local hipHeight = humanoid.HipHeight or 2.0
-    return hrp.Position.Y - hipHeight
+    local hh = humanoid.HipHeight or 2.0
+    return hrp.Position.Y - hh
 end
 
-local function feetOverHead(head, horizMargin, vertTolerance)
-    if not head or not head.Parent then return false end
-    if not hrp or not humanoid then return false end
-    if holdingFootball() then return false end
-    if targetHasFootball(head.Parent) then return false end
+local function feetOverHead(head, hm, vt)
+    if not head or not head.Parent or not hrp or not humanoid then return false end
+    if holdingFootball() or targetHasFootball(head.Parent) then return false end
     local eff = effectiveHeadSize(head)
     local headTop = head.Position.Y + eff.Y * 0.5
-    local feetY = getFeetY()
-    if not feetY then return false end
+    local fy = getFeetY()
+    if not fy then return false end
     local dx = hrp.Position.X - head.Position.X
     local dz = hrp.Position.Z - head.Position.Z
-    local horizDist = math.sqrt(dx*dx + dz*dz)
-    local radius = math.max(eff.X * 0.5, eff.Z * 0.5) + horizMargin
-    if horizDist > radius then return false end
-    return feetY >= (headTop - vertTolerance)
+    local hd = math.sqrt(dx*dx + dz*dz)
+    local r = math.max(eff.X*0.5, eff.Z*0.5) + hm
+    if hd > r then return false end
+    return fy >= (headTop - vt)
 end
 
 local function withinStickyRange(head)
-    if not head or not head.Parent then return false end
-    if not hrp or not humanoid then return false end
-    if holdingFootball() then return false end
-    if targetHasFootball(head.Parent) then return false end
+    if not head or not head.Parent or not hrp or not humanoid then return false end
+    if holdingFootball() or targetHasFootball(head.Parent) then return false end
     local eff = effectiveHeadSize(head)
     local headBottom = head.Position.Y - eff.Y * 0.5
-    local feetY = getFeetY()
-    if not feetY then return false end
-    if feetY < headBottom then return false end
+    local fy = getFeetY()
+    if not fy or fy < headBottom then return false end
     local dx = hrp.Position.X - head.Position.X
     local dz = hrp.Position.Z - head.Position.Z
-    local horizDist = math.sqrt(dx*dx + dz*dz)
-    local radius = math.max(eff.X * 0.5, eff.Z * 0.5) + FEET_OVER_HEAD_HORIZ_MARGIN
-    return horizDist <= radius
+    local hd = math.sqrt(dx*dx + dz*dz)
+    local r = math.max(eff.X*0.5, eff.Z*0.5) + FEET_OVER_HEAD_HORIZ_MARGIN
+    return hd <= r
 end
 
--- Dive detection: either the side-tech animation is playing, or the target
--- HRP has a strong downward velocity. Cached briefly so we don't spam.
 local function characterIsDiving(char)
     if not char then return false end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -758,51 +627,48 @@ local function characterIsDiving(char)
         local now = tick()
         local rec = targetDiveCache[hum]
         if not rec or now >= rec.next then
-            local diving = false
-            local animator = char:FindFirstChildOfClass("Animator")
-            if animator then
-                for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+            local d = false
+            local anim = char:FindFirstChildOfClass("Animator")
+            if anim then
+                for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
                     if tr.Animation and tr.Animation.AnimationId == SIDE_TECH_ANIM_ID then
-                        diving = true; break
+                        d = true; break
                     end
                 end
             end
-            targetDiveCache[hum] = {diving = diving, next = now + 0.05}
+            targetDiveCache[hum] = {diving=d, next=now+0.05}
         end
         if targetDiveCache[hum].diving then return true end
     end
-    -- Fast downward HRP motion = diving/tackling.
     local h = char:FindFirstChild("HumanoidRootPart")
-    if h and h.AssemblyLinearVelocity.Y <= STICKY_DIVE_Y_VELOCITY then
-        return true
-    end
+    if h and h.AssemblyLinearVelocity.Y <= STICKY_DIVE_Y_VELOCITY then return true end
     return false
 end
 
-local function findFeetOverHead(horizMargin, vertTolerance)
+local function findFeetOverHead(hm, vt)
     if not hrp or holdingFootball() then return nil end
-    local bestHead, bestDist = nil, math.huge
+    local bH, bD = nil, math.huge
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
             local c = p.Character
             if c and c.Parent and not characterIsDiving(c) then
                 local head = headCache[p]
-                if head and head.Parent and feetOverHead(head, horizMargin, vertTolerance) then
+                if head and head.Parent and feetOverHead(head, hm, vt) then
                     local dx = head.Position.X - hrp.Position.X
                     local dz = head.Position.Z - hrp.Position.Z
-                    local d = math.sqrt(dx*dx + dz*dz)
-                    if d < bestDist then bestDist = d; bestHead = head end
+                    local d = math.sqrt(dx*dx+dz*dz)
+                    if d < bD then bD = d; bH = head end
                 end
             end
         end
     end
-    return bestHead
+    return bH
 end
 
 local function findHeadInStickyRange()
     if not hrp or holdingFootball() then return nil end
-    local bestHead, bestDist = nil, math.huge
+    local bH, bD = nil, math.huge
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
@@ -812,35 +678,34 @@ local function findHeadInStickyRange()
                 if head and head.Parent and withinStickyRange(head) then
                     local dx = head.Position.X - hrp.Position.X
                     local dz = head.Position.Z - hrp.Position.Z
-                    local d = math.sqrt(dx*dx + dz*dz)
-                    if d < bestDist then bestDist = d; bestHead = head end
+                    local d = math.sqrt(dx*dx+dz*dz)
+                    if d < bD then bD = d; bH = head end
                 end
             end
         end
     end
-    return bestHead
+    return bH
 end
 
 local function rocketHeadCheckNow()
     if not hrp or not humanoid or holdingFootball() then return nil end
-    local hipHeight = humanoid.HipHeight or 2.0
-    local feetY = hrp.Position.Y - hipHeight
-    local hrpPos = hrp.Position
+    local hh = humanoid.HipHeight or 2.0
+    local fy = hrp.Position.Y - hh
+    local hp = hrp.Position
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
             local head = headCache[p]
             if head and head.Parent then
                 local sz = head.Size
-                local headTop = head.Position.Y + sz.Y * 0.5
-                local headBottom = head.Position.Y - sz.Y * 0.5
-                if feetY >= (headBottom - ROCKET_VERT_BELOW)
-                and feetY <= (headTop + ROCKET_VERT_ABOVE) then
-                    local dx = math.abs(head.Position.X - hrpPos.X)
-                    local dz = math.abs(head.Position.Z - hrpPos.Z)
-                    local hx = sz.X * 0.5 + ROCKET_HORIZ_MARGIN
-                    local hz = sz.Z * 0.5 + ROCKET_HORIZ_MARGIN
-                    if dx <= hx and dz <= hz then return head end
+                local hTop = head.Position.Y + sz.Y*0.5
+                local hBot = head.Position.Y - sz.Y*0.5
+                if fy >= (hBot - ROCKET_VERT_BELOW) and fy <= (hTop + ROCKET_VERT_ABOVE) then
+                    local dx = math.abs(head.Position.X - hp.X)
+                    local dz = math.abs(head.Position.Z - hp.Z)
+                    if dx <= sz.X*0.5 + ROCKET_HORIZ_MARGIN and dz <= sz.Z*0.5 + ROCKET_HORIZ_MARGIN then
+                        return head
+                    end
                 end
             end
         end
@@ -850,11 +715,7 @@ end
 
 local function isOnHeadForRocketBoost()
     local live = rocketHeadCheckNow()
-    if live then
-        lastOnHeadAt = tick()
-        lastOnHeadRef = live
-        return live
-    end
+    if live then lastOnHeadAt = tick(); lastOnHeadRef = live; return live end
     if lastOnHeadRef and lastOnHeadRef.Parent and (tick() - lastOnHeadAt) <= ROCKET_GRACE then
         return lastOnHeadRef
     end
@@ -864,7 +725,7 @@ end
 local function findClosestBallCarrier()
     if not hrp then return nil end
     local myPos = hrp.Position
-    local best, bestDist = nil, math.huge
+    local b, bD = nil, math.huge
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
@@ -873,12 +734,12 @@ local function findClosestBallCarrier()
                 local h = c:FindFirstChild("HumanoidRootPart")
                 if h then
                     local d = (h.Position - myPos).Magnitude
-                    if d < bestDist then bestDist = d; best = c end
+                    if d < bD then bD = d; b = c end
                 end
             end
         end
     end
-    return best
+    return b
 end
 
 local function getBallCarrier() return findClosestBallCarrier() end
@@ -886,17 +747,17 @@ local function getBallCarrier() return findClosestBallCarrier() end
 local function diveDirection()
     if humanoid then
         local md = humanoid.MoveDirection
-        local flat = Vector3.new(md.X, 0, md.Z)
-        if flat.Magnitude > 0.01 then return flat.Unit end
+        local f = Vector3.new(md.X, 0, md.Z)
+        if f.Magnitude > 0.01 then return f.Unit end
     end
     if hrp then
-        local look = hrp.CFrame.LookVector
-        local flat = Vector3.new(look.X, 0, look.Z)
-        if flat.Magnitude > 0.01 then return flat.Unit end
+        local l = hrp.CFrame.LookVector
+        local f = Vector3.new(l.X, 0, l.Z)
+        if f.Magnitude > 0.01 then return f.Unit end
     end
-    local look = camera.CFrame.LookVector
-    local flat = Vector3.new(look.X, 0, look.Z)
-    if flat.Magnitude > 0.01 then return flat.Unit end
+    local l = camera.CFrame.LookVector
+    local f = Vector3.new(l.X, 0, l.Z)
+    if f.Magnitude > 0.01 then return f.Unit end
     return Vector3.new(0, 0, -1)
 end
 
@@ -911,8 +772,7 @@ local function isRagdolled()
     if not humanoid then return false end
     if humanoid.PlatformStand then return true end
     local st = humanoid:GetState()
-    return st == Enum.HumanoidStateType.Ragdoll
-        or st == Enum.HumanoidStateType.Physics
+    return st == Enum.HumanoidStateType.Ragdoll or st == Enum.HumanoidStateType.Physics
         or st == Enum.HumanoidStateType.FallingDown
 end
 
@@ -921,10 +781,10 @@ local function enforceWalkSpeed()
     if humanoid.WalkSpeed ~= walkSpeed then humanoid.WalkSpeed = walkSpeed end
 end
 
-local function installWalkSpeedLock(hum)
+local function installWalkSpeedLock(h)
     if walkSpeedConn then pcall(function() walkSpeedConn:Disconnect() end); walkSpeedConn = nil end
-    if not hum then return end
-    walkSpeedConn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+    if not h then return end
+    walkSpeedConn = h:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
         if not alive or walkSpeedLockSuspended or not lockActive() then return end
         if humanoid and humanoid.WalkSpeed ~= walkSpeed then humanoid.WalkSpeed = walkSpeed end
     end)
@@ -941,16 +801,15 @@ local function wallAhead(dir, dist)
         wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
         wallRayParams.IgnoreWater = true
     end
-    local ignore = {}
-    local myChar = localPlayer.Character
-    if myChar then
-        for _, d in ipairs(myChar:GetDescendants()) do
-            if d:IsA("BasePart") then ignore[#ignore+1] = d end
+    local ign = {}
+    local c = localPlayer.Character
+    if c then
+        for _, d in ipairs(c:GetDescendants()) do
+            if d:IsA("BasePart") then ign[#ign+1] = d end
         end
     end
-    wallRayParams.FilterDescendantsInstances = ignore
-    local hit = workspace:Raycast(hrp.Position, flat * dist, wallRayParams)
-    return hit ~= nil
+    wallRayParams.FilterDescendantsInstances = ign
+    return workspace:Raycast(hrp.Position, flat*dist, wallRayParams) ~= nil
 end
 
 local function applyNoclip()
@@ -958,56 +817,53 @@ local function applyNoclip()
     local now = tick()
     if now < noclipNextAt then return end
     noclipNextAt = now + NOCLIP_INTERVAL
-    local char = localPlayer.Character
-    if not char then return end
-    for _, d in ipairs(char:GetDescendants()) do
-        if d:IsA("BasePart") and d.CanCollide then
-            pcall(function() d.CanCollide = false end)
-        end
+    local c = localPlayer.Character
+    if not c then return end
+    for _, d in ipairs(c:GetDescendants()) do
+        if d:IsA("BasePart") and d.CanCollide then pcall(function() d.CanCollide = false end) end
     end
 end
 
 local function clampHorizontalSpeed()
     if not lockActive() or walkSpeedLockSuspended then return end
     if not hrp or not humanoid then return end
-    if isFlying or stickyTarget or sideTechAnimPlaying or isRagdolled() then return end
-    if autoRushActive then return end
+    if isFlying or stickyTarget or sideTechAnimPlaying or isRagdolled() or autoRushActive then return end
     local md = humanoid.MoveDirection
-    local mdFlat = Vector3.new(md.X, 0, md.Z)
-    if mdFlat.Magnitude < 0.05 then return end
-    local vel = hrp.AssemblyLinearVelocity
-    local flat = Vector3.new(vel.X, 0, vel.Z)
-    local flatMag = flat.Magnitude
-    if flatMag >= walkSpeed then return end
-    local dir = mdFlat.Unit
-    if flatMag > 0.5 then
-        local velDir = flat / flatMag
-        if velDir:Dot(dir) >= 0.3 then dir = velDir end
+    local mf = Vector3.new(md.X, 0, md.Z)
+    if mf.Magnitude < 0.05 then return end
+    local v = hrp.AssemblyLinearVelocity
+    local fl = Vector3.new(v.X, 0, v.Z)
+    local fm = fl.Magnitude
+    if fm >= walkSpeed then return end
+    local dir = mf.Unit
+    if fm > 0.5 then
+        local vd = fl / fm
+        if vd:Dot(dir) >= 0.3 then dir = vd end
     end
     if wallAhead(dir, 2.0) then return end
-    hrp.AssemblyLinearVelocity = Vector3.new(dir.X * walkSpeed, vel.Y, dir.Z * walkSpeed)
+    hrp.AssemblyLinearVelocity = Vector3.new(dir.X*walkSpeed, v.Y, dir.Z*walkSpeed)
 end
 
 -------------------------------------------------
--- AUTO SAVE
+-- AUTOSAVE
 -------------------------------------------------
 local function snapshotSettings()
     return {
-        walkSpeed = walkSpeed, gravityVal = gravityVal,
-        isFlying = isFlying, flySpeed = flySpeed,
-        pullVectorEnabled = pullVectorEnabled, pullSpeed = pullSpeed,
-        autoRushUnlocked = autoRushUnlocked,
-        isHeadModEnabled = isHeadModEnabled, targetHeadScale = targetHeadScale,
-        autoSideTechEnabled = autoSideTechEnabled,
-        diveBoostEnabled = diveBoostEnabled, diveBoostLevel = diveBoostLevel,
-        rocketBoostEnabled = rocketBoostEnabled, rocketBoostChance = rocketBoostChance,
-        stickyHeadEnabled = stickyHeadEnabled,
-        jumpBoostEnabled = jumpBoostEnabled, jumpBoostStuds = jumpBoostStuds, jumpBoostChance = jumpBoostChance,
-        noclipEnabled = noclipEnabled,
-        autoLoadEnabled = autoLoadEnabled, headsInvisibleEnabled = headsInvisibleEnabled,
+        walkSpeed=walkSpeed, gravityVal=gravityVal,
+        isFlying=isFlying, flySpeed=flySpeed,
+        pullVectorEnabled=pullVectorEnabled, pullSpeed=pullSpeed,
+        autoRushUnlocked=autoRushUnlocked,
+        isHeadModEnabled=isHeadModEnabled, targetHeadScale=targetHeadScale,
+        autoSideTechEnabled=autoSideTechEnabled,
+        diveBoostEnabled=diveBoostEnabled, diveBoostLevel=diveBoostLevel,
+        rocketBoostEnabled=rocketBoostEnabled, rocketBoostChance=rocketBoostChance,
+        stickyHeadEnabled=stickyHeadEnabled,
+        jumpBoostEnabled=jumpBoostEnabled, jumpBoostStuds=jumpBoostStuds,
+        jumpBoostChance=jumpBoostChance,
+        noclipEnabled=noclipEnabled,
+        autoLoadEnabled=autoLoadEnabled, headsInvisibleEnabled=headsInvisibleEnabled,
     }
 end
-
 local function scheduleAutoSave()
     if not autoLoadEnabled or not hasFileApi or autoSaveScheduled then return end
     autoSaveScheduled = true
@@ -1017,63 +873,60 @@ local function scheduleAutoSave()
         writeAutoConfig(snapshotSettings())
     end)
 end
+local function registerToggle(k,o) uiRefs.toggles[k]=o end
+local function registerSlider(k,o) uiRefs.sliders[k]=o end
 
-local function registerToggle(key, obj) uiRefs.toggles[key] = obj end
-local function registerSlider(key, obj) uiRefs.sliders[key] = obj end
-
-local function applySettings(data)
-    if not data then return end
-    local function sT(k, v) if v == nil then return end local o = uiRefs.toggles[k]; if o then pcall(function() o:Set(v) end) end end
-    local function sS(k, v) if v == nil then return end local o = uiRefs.sliders[k]; if o then pcall(function() o:Set(v) end) end end
-    if type(data.walkSpeed) == "number" then walkSpeed = data.walkSpeed; if humanoid then humanoid.WalkSpeed = walkSpeed end; sS("walkSpeed", data.walkSpeed) end
-    if type(data.gravityVal) == "number" then gravityVal = data.gravityVal; sS("gravityVal", data.gravityVal) end
-    if type(data.isFlying) == "boolean" then isFlying = data.isFlying; sT("isFlying", data.isFlying) end
-    if type(data.flySpeed) == "number" then flySpeed = data.flySpeed; sS("flySpeed", data.flySpeed) end
-    if type(data.pullVectorEnabled) == "boolean" then pullVectorEnabled = data.pullVectorEnabled; sT("pullVectorEnabled", data.pullVectorEnabled) end
-    if type(data.pullSpeed) == "number" then pullSpeed = data.pullSpeed; sS("pullSpeed", data.pullSpeed) end
-    if type(data.autoRushUnlocked) == "boolean" then autoRushUnlocked = data.autoRushUnlocked; sT("autoRushUnlocked", data.autoRushUnlocked) end
-    if type(data.isHeadModEnabled) == "boolean" then isHeadModEnabled = data.isHeadModEnabled; sT("isHeadModEnabled", data.isHeadModEnabled) end
-    if type(data.targetHeadScale) == "number" then targetHeadScale = data.targetHeadScale; sS("targetHeadScale", data.targetHeadScale) end
-    if type(data.autoSideTechEnabled) == "boolean" then autoSideTechEnabled = data.autoSideTechEnabled; sT("autoSideTechEnabled", data.autoSideTechEnabled) end
-    if type(data.diveBoostEnabled) == "boolean" then diveBoostEnabled = data.diveBoostEnabled; sT("diveBoostEnabled", data.diveBoostEnabled) end
-    if type(data.diveBoostLevel) == "number" then diveBoostLevel = data.diveBoostLevel; recomputeDiveBoost(); sS("diveBoostLevel", data.diveBoostLevel) end
-    if type(data.rocketBoostEnabled) == "boolean" then rocketBoostEnabled = data.rocketBoostEnabled; sT("rocketBoostEnabled", data.rocketBoostEnabled) end
-    if type(data.rocketBoostChance) == "number" then rocketBoostChance = data.rocketBoostChance; sS("rocketBoostChance", data.rocketBoostChance) end
-    if type(data.stickyHeadEnabled) == "boolean" then stickyHeadEnabled = data.stickyHeadEnabled; sT("stickyHeadEnabled", data.stickyHeadEnabled) end
-    if type(data.jumpBoostEnabled) == "boolean" then jumpBoostEnabled = data.jumpBoostEnabled; sT("jumpBoostEnabled", data.jumpBoostEnabled) end
-    if type(data.jumpBoostStuds) == "number" then jumpBoostStuds = data.jumpBoostStuds; sS("jumpBoostStuds", data.jumpBoostStuds) end
-    if type(data.jumpBoostChance) == "number" then jumpBoostChance = data.jumpBoostChance; sS("jumpBoostChance", data.jumpBoostChance) end
-    if type(data.noclipEnabled) == "boolean" then noclipEnabled = data.noclipEnabled; sT("noclipEnabled", data.noclipEnabled) end
-    if type(data.autoLoadEnabled) == "boolean" then autoLoadEnabled = data.autoLoadEnabled; sT("autoLoadEnabled", data.autoLoadEnabled) end
-    if type(data.headsInvisibleEnabled) == "boolean" then headsInvisibleEnabled = data.headsInvisibleEnabled; sT("headsInvisibleEnabled", data.headsInvisibleEnabled) end
+local function applySettings(d)
+    if not d then return end
+    local function sT(k,v) if v==nil then return end local o = uiRefs.toggles[k]; if o then pcall(function() o:Set(v) end) end end
+    local function sS(k,v) if v==nil then return end local o = uiRefs.sliders[k]; if o then pcall(function() o:Set(v) end) end end
+    if type(d.walkSpeed)=="number" then walkSpeed=d.walkSpeed; if humanoid then humanoid.WalkSpeed=walkSpeed end; sS("walkSpeed", d.walkSpeed) end
+    if type(d.gravityVal)=="number" then gravityVal=d.gravityVal; sS("gravityVal", d.gravityVal) end
+    if type(d.isFlying)=="boolean" then isFlying=d.isFlying; sT("isFlying", d.isFlying) end
+    if type(d.flySpeed)=="number" then flySpeed=d.flySpeed; sS("flySpeed", d.flySpeed) end
+    if type(d.pullVectorEnabled)=="boolean" then pullVectorEnabled=d.pullVectorEnabled; sT("pullVectorEnabled", d.pullVectorEnabled) end
+    if type(d.pullSpeed)=="number" then pullSpeed=d.pullSpeed; sS("pullSpeed", d.pullSpeed) end
+    if type(d.autoRushUnlocked)=="boolean" then autoRushUnlocked=d.autoRushUnlocked; sT("autoRushUnlocked", d.autoRushUnlocked) end
+    if type(d.isHeadModEnabled)=="boolean" then isHeadModEnabled=d.isHeadModEnabled; sT("isHeadModEnabled", d.isHeadModEnabled) end
+    if type(d.targetHeadScale)=="number" then targetHeadScale=d.targetHeadScale; sS("targetHeadScale", d.targetHeadScale) end
+    if type(d.autoSideTechEnabled)=="boolean" then autoSideTechEnabled=d.autoSideTechEnabled; sT("autoSideTechEnabled", d.autoSideTechEnabled) end
+    if type(d.diveBoostEnabled)=="boolean" then diveBoostEnabled=d.diveBoostEnabled; sT("diveBoostEnabled", d.diveBoostEnabled) end
+    if type(d.diveBoostLevel)=="number" then diveBoostLevel=d.diveBoostLevel; recomputeDiveBoost(); sS("diveBoostLevel", d.diveBoostLevel) end
+    if type(d.rocketBoostEnabled)=="boolean" then rocketBoostEnabled=d.rocketBoostEnabled; sT("rocketBoostEnabled", d.rocketBoostEnabled) end
+    if type(d.rocketBoostChance)=="number" then rocketBoostChance=d.rocketBoostChance; sS("rocketBoostChance", d.rocketBoostChance) end
+    if type(d.stickyHeadEnabled)=="boolean" then stickyHeadEnabled=d.stickyHeadEnabled; sT("stickyHeadEnabled", d.stickyHeadEnabled) end
+    if type(d.jumpBoostEnabled)=="boolean" then jumpBoostEnabled=d.jumpBoostEnabled; sT("jumpBoostEnabled", d.jumpBoostEnabled) end
+    if type(d.jumpBoostStuds)=="number" then jumpBoostStuds=d.jumpBoostStuds; sS("jumpBoostStuds", d.jumpBoostStuds) end
+    if type(d.jumpBoostChance)=="number" then jumpBoostChance=d.jumpBoostChance; sS("jumpBoostChance", d.jumpBoostChance) end
+    if type(d.noclipEnabled)=="boolean" then noclipEnabled=d.noclipEnabled; sT("noclipEnabled", d.noclipEnabled) end
+    if type(d.autoLoadEnabled)=="boolean" then autoLoadEnabled=d.autoLoadEnabled; sT("autoLoadEnabled", d.autoLoadEnabled) end
+    if type(d.headsInvisibleEnabled)=="boolean" then headsInvisibleEnabled=d.headsInvisibleEnabled; sT("headsInvisibleEnabled", d.headsInvisibleEnabled) end
 end
 
 -------------------------------------------------
--- HEAD SIZE / TRANSPARENCY / PROXIES
+-- HEAD MODS
 -------------------------------------------------
-local function readOrigFromAttr(part)
-    local ok, v = pcall(function() return part:GetAttribute(ORIG_SIZE_ATTR) end)
+local function readOrigFromAttr(p)
+    local ok, v = pcall(function() return p:GetAttribute(ORIG_SIZE_ATTR) end)
     if not ok or not v or typeof(v) ~= "Vector3" then return nil end
     return v
 end
-local function writeOrigToAttr(part, size)
-    pcall(function() part:SetAttribute(ORIG_SIZE_ATTR, size) end)
-end
-local function captureOrig(part)
-    if origSizes[part] then return origSizes[part] end
-    local persisted = readOrigFromAttr(part)
-    if persisted then origSizes[part] = persisted; return persisted end
-    local s = part.Size
-    origSizes[part] = s
-    writeOrigToAttr(part, s)
+local function writeOrigToAttr(p, s) pcall(function() p:SetAttribute(ORIG_SIZE_ATTR, s) end) end
+local function captureOrig(p)
+    if origSizes[p] then return origSizes[p] end
+    local persisted = readOrigFromAttr(p)
+    if persisted then origSizes[p] = persisted; return persisted end
+    local s = p.Size
+    origSizes[p] = s
+    writeOrigToAttr(p, s)
     return s
 end
 local function applyHeadNow(head)
     if not head or not head.Parent then return end
     local orig = captureOrig(head)
-    local targetSize = isHeadModEnabled and Vector3.new(targetHeadScale, orig.Y, targetHeadScale) or orig
+    local ts = isHeadModEnabled and Vector3.new(targetHeadScale, orig.Y, targetHeadScale) or orig
     pcall(function()
-        if (head.Size - targetSize).Magnitude > SIZE_EPS then head.Size = targetSize end
+        if (head.Size - ts).Magnitude > SIZE_EPS then head.Size = ts end
     end)
     if origCanCollide[head] == nil then origCanCollide[head] = head.CanCollide end
     if head.CanCollide then pcall(function() head.CanCollide = false end) end
@@ -1109,58 +962,55 @@ local function applyTransparencyToAllHeads()
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
-            local head = headCache[p]
-            if head and head.Parent then applyHeadTransparency(head) end
+            local h = headCache[p]
+            if h and h.Parent then applyHeadTransparency(h) end
         end
     end
 end
 
-local function resolveLiveHead(player)
-    local char = player.Character
-    if not char or not char.Parent then return nil end
-    return char:FindFirstChild("Head")
-end
-local function enforceHeadFor(player)
-    if not player or player == localPlayer then return end
-    local head = resolveLiveHead(player)
-    if not head then return end
-    if headCache[player] ~= head then headCache[player] = head end
-    if isHeadModEnabled then applyHeadNow(head) end
-    applyHeadTransparency(head)
+local function enforceHeadFor(p)
+    if not p or p == localPlayer then return end
+    local c = p.Character
+    if not c or not c.Parent then return end
+    local h = c:FindFirstChild("Head")
+    if not h then return end
+    if headCache[p] ~= h then headCache[p] = h end
+    if isHeadModEnabled then applyHeadNow(h) end
+    applyHeadTransparency(h)
 end
 local function enforceHeadsNow()
     for i = 1, #cachedPlayers do enforceHeadFor(cachedPlayers[i]) end
 end
 
-local function destroyHeadProxy(player)
-    local proxy = headProxies[player]
-    if proxy then pcall(function() proxy:Destroy() end); headProxies[player] = nil end
+local function destroyHeadProxy(p)
+    local pr = headProxies[p]
+    if pr then pcall(function() pr:Destroy() end); headProxies[p] = nil end
 end
 local function destroyAllHeadProxies()
-    for p, _ in pairs(headProxies) do destroyHeadProxy(p) end
+    for p,_ in pairs(headProxies) do destroyHeadProxy(p) end
 end
-local function ensureHeadProxy(player, head)
-    if not head or not head.Parent then destroyHeadProxy(player); return end
-    if not (isHeadModEnabled or stickyHeadEnabled) then destroyHeadProxy(player); return end
-    local proxy = headProxies[player]
-    if not proxy or not proxy.Parent then
-        proxy = Instance.new("Part")
-        proxy.Name = "UFH_HeadProxy"
-        proxy.Transparency = 1
-        proxy.Anchored = true
-        proxy.CanCollide = false
-        proxy.CanQuery = false
-        proxy.CanTouch = false
-        proxy.Massless = true
-        proxy.Locked = true
-        proxy.CastShadow = false
-        proxy.TopSurface = Enum.SurfaceType.Smooth
-        proxy.BottomSurface = Enum.SurfaceType.Smooth
-        proxy.Parent = workspace
-        headProxies[player] = proxy
+local function ensureHeadProxy(p, head)
+    if not head or not head.Parent then destroyHeadProxy(p); return end
+    if not (isHeadModEnabled or stickyHeadEnabled) then destroyHeadProxy(p); return end
+    local pr = headProxies[p]
+    if not pr or not pr.Parent then
+        pr = Instance.new("Part")
+        pr.Name = "UFH_HeadProxy"
+        pr.Transparency = 1
+        pr.Anchored = true
+        pr.CanCollide = false
+        pr.CanQuery = false
+        pr.CanTouch = false
+        pr.Massless = true
+        pr.Locked = true
+        pr.CastShadow = false
+        pr.TopSurface = Enum.SurfaceType.Smooth
+        pr.BottomSurface = Enum.SurfaceType.Smooth
+        pr.Parent = workspace
+        headProxies[p] = pr
     end
-    proxy.Size = head.Size
-    proxy.CFrame = head.CFrame
+    pr.Size = head.Size
+    pr.CFrame = head.CFrame
 end
 
 -------------------------------------------------
@@ -1168,32 +1018,32 @@ end
 -------------------------------------------------
 local function detachSticky(reason) end
 
-local function bindCharacter(player, char)
+local function bindCharacter(p, c)
     task.spawn(function()
-        local head = char:FindFirstChild("Head")
-        while not head and char.Parent and alive do
-            char.ChildAdded:Wait()
-            head = char:FindFirstChild("Head")
+        local h = c:FindFirstChild("Head")
+        while not h and c.Parent and alive do
+            c.ChildAdded:Wait()
+            h = c:FindFirstChild("Head")
         end
-        if not alive or not head or not char.Parent then return end
-        headCache[player] = head
-        if isHeadModEnabled then applyHeadNow(head) end
-        applyHeadTransparency(head)
+        if not alive or not h or not c.Parent then return end
+        headCache[p] = h
+        if isHeadModEnabled then applyHeadNow(h) end
+        applyHeadTransparency(h)
     end)
 end
 
 local function isSideTechTrack(tr)
     if not tr then return false end
-    local ok, anim = pcall(function() return tr.Animation end)
-    if not ok or not anim then return false end
-    local ok2, id = pcall(function() return anim.AnimationId end)
+    local ok, a = pcall(function() return tr.Animation end)
+    if not ok or not a then return false end
+    local ok2, id = pcall(function() return a.AnimationId end)
     return ok2 and id == SIDE_TECH_ANIM_ID
 end
 
 local function stopMovementPriority(tr)
     if not tr or isSideTechTrack(tr) then return end
-    local ok, prio = pcall(function() return tr.Priority end)
-    if ok and prio == Enum.AnimationPriority.Movement then
+    local ok, pr = pcall(function() return tr.Priority end)
+    if ok and pr == Enum.AnimationPriority.Movement then
         pcall(function() tr:Stop(0) end)
     end
 end
@@ -1203,12 +1053,9 @@ local function forceStandingState()
     if humanoid.PlatformStand then humanoid.PlatformStand = false end
     if humanoid.Sit then humanoid.Sit = false end
     local st = humanoid:GetState()
-    if st == Enum.HumanoidStateType.Physics
-    or st == Enum.HumanoidStateType.Ragdoll
-    or st == Enum.HumanoidStateType.FallingDown
-    or st == Enum.HumanoidStateType.Freefall
-    or st == Enum.HumanoidStateType.Jumping
-    or st == Enum.HumanoidStateType.Landed then
+    if st == Enum.HumanoidStateType.Physics or st == Enum.HumanoidStateType.Ragdoll
+    or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Freefall
+    or st == Enum.HumanoidStateType.Jumping or st == Enum.HumanoidStateType.Landed then
         pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
         pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
     end
@@ -1216,20 +1063,18 @@ end
 
 local function silenceHumanoid()
     if not humanoid then return end
-    local animator = humanoid:FindFirstChildOfClass("Animator")
-    if animator then
-        for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do stopMovementPriority(tr) end
+    local anim = humanoid:FindFirstChildOfClass("Animator")
+    if anim then
+        for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do stopMovementPriority(tr) end
         if stickyAnimConn then pcall(function() stickyAnimConn:Disconnect() end) end
-        stickyAnimConn = animator.AnimationPlayed:Connect(function(tr)
+        stickyAnimConn = anim.AnimationPlayed:Connect(function(tr)
             if not alive then return end
             stopMovementPriority(tr)
         end)
     end
     for _, s in ipairs({
-        Enum.HumanoidStateType.Freefall,
-        Enum.HumanoidStateType.Jumping,
-        Enum.HumanoidStateType.FallingDown,
-        Enum.HumanoidStateType.Ragdoll,
+        Enum.HumanoidStateType.Freefall, Enum.HumanoidStateType.Jumping,
+        Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll,
     }) do
         if humanoid:GetStateEnabled(s) then
             humanoid:SetStateEnabled(s, false)
@@ -1243,15 +1088,13 @@ local function silenceHumanoid()
     humanoid.JumpPower = 0
     humanoid.JumpHeight = 0
     humanoid:Move(V3_ZERO, false)
-    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
     forceStandingState()
 end
 
 local function unsilenceHumanoid()
     if not humanoid then return end
     if stickyAnimConn then pcall(function() stickyAnimConn:Disconnect() end); stickyAnimConn = nil end
-    for s, _ in pairs(disabledStates) do humanoid:SetStateEnabled(s, true) end
+    for s,_ in pairs(disabledStates) do humanoid:SetStateEnabled(s, true) end
     disabledStates = {}
     if savedWalkSpeed ~= nil then humanoid.WalkSpeed = savedWalkSpeed; savedWalkSpeed = nil end
     if savedJumpPower ~= nil then humanoid.JumpPower = savedJumpPower; savedJumpPower = nil end
@@ -1274,10 +1117,7 @@ detachSticky = function(reason)
     detachStickyTargetJumpConn()
     unsilenceHumanoid()
     walkSpeedLockSuspended = false
-    if reason == "input" then
-        stickyReattachLocked = true
-        stickyLockOffSince = nil
-    end
+    if reason == "input" then stickyReattachLocked = true; stickyLockOffSince = nil end
     enforceWalkSpeed()
 end
 
@@ -1292,97 +1132,96 @@ local function attachSticky(head)
     walkSpeedLockSuspended = true
     if hrp then
         local headTopY = head.Position.Y + head.Size.Y * 0.5
-        local hipHeight = humanoid and humanoid.HipHeight or 2.0
-        stickyAnchorPos = Vector3.new(head.Position.X, headTopY + hipHeight + FOOT_CLEARANCE, head.Position.Z)
+        local hh = humanoid and humanoid.HipHeight or 2.0
+        stickyAnchorPos = Vector3.new(head.Position.X, headTopY + hh + FOOT_CLEARANCE, head.Position.Z)
         stickyAttachStartPos = hrp.Position
         hrp.AssemblyLinearVelocity = V3_ZERO
         hrp.AssemblyAngularVelocity = V3_ZERO
         local look = hrp.CFrame.LookVector
-        local yaw = math.atan2(-look.X, -look.Z)
-        stickyLockedRotation = CFrame.Angles(0, yaw, 0)
+        local y = math.atan2(-look.X, -look.Z)
+        stickyLockedRotation = CFrame.Angles(0, y, 0)
     end
     stickyLastTargetHeadPos = head.Position
     silenceHumanoid()
     forceStandingState()
     pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
-    if head and head.Parent then
-        local char = head.Parent
-        local player = Players:GetPlayerFromCharacter(char)
-        if player and player ~= localPlayer then
-            detachStickyTargetJumpConn()
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                stickyTargetJumpConn = hum.Jumping:Connect(function()
-                    if not alive or stickyTarget then return end
-                    if not jumpBoostEnabled or sideTechAnimPlaying then return end
-                    if holdingFootball() then return end
-                    -- (jump boost handled in applyJumpBoost)
-                end)
-            end
-        end
-    end
 end
 
 -------------------------------------------------
 -- JUMP BOOST
 -------------------------------------------------
-local function applyJumpBoost(fromHead)
-    if not jumpBoostEnabled or stickyTarget then return end
+local function applyJumpBoost()
+    if not jumpBoostEnabled then return end
+    if stickyTarget then return end
     if not hrp or not humanoid or jumpBoostStuds <= 0 then return end
     if isFlying or sideTechAnimPlaying or holdingFootball() then return end
-    if math.random() * 100 > jumpBoostChance then return end
+    if math.random()*100 > jumpBoostChance then return end
     jumpBoostStickyCooldown = JUMP_BOOST_STICKY_COOLDOWN
-    local boostV = studsToVelocity(jumpBoostStuds)
-    local vel = hrp.AssemblyLinearVelocity
-    hrp.AssemblyLinearVelocity = Vector3.new(vel.X, boostV, vel.Z)
-    jumpBoostHoldUntil = 0
-    jumpBoostHoldVelocity = 0
+    local bv = studsToVelocity(jumpBoostStuds)
+    local v = hrp.AssemblyLinearVelocity
+    hrp.AssemblyLinearVelocity = Vector3.new(v.X, bv, v.Z)
+    -- Force upward motion to persist for a short window.
+    jumpBoostHoldUntil = tick() + JUMP_BOOST_HOLD_TIME
+    jumpBoostHoldVelocity = bv
     pcall(function()
         local st = humanoid:GetState()
-        if st == Enum.HumanoidStateType.Landed
-        or st == Enum.HumanoidStateType.Running
-        or st == Enum.HumanoidStateType.RunningNoPhysics then
-            humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+        if st == Enum.HumanoidStateType.Landed or st == Enum.HumanoidStateType.Running
+        or st == Enum.HumanoidStateType.RunningNoPhysics or st == Enum.HumanoidStateType.GettingUp then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end)
     lastJumpTime = tick()
 end
 
+-- True if we're standing on this player's head by any means: sticky, proxy,
+-- or a live geometric check. Works with head mod off and sticky off.
 local function isActivelyOnHeadOf(player)
     if not player or holdingFootball() then return false end
-    local theirChar = player.Character
-    if not theirChar then return false end
-    local theirHead = theirChar:FindFirstChild("Head")
-    if not theirHead then return false end
-    if stickyTarget == theirHead then return true end
-    if proxyEngaged[theirHead] == true then return true end
+    local tc = player.Character
+    if not tc then return false end
+    local th = tc:FindFirstChild("Head")
+    if not th then return false end
+    if stickyTarget == th then return true end
+    if proxyEngaged[th] == true then return true end
+    if not hrp or not humanoid then return false end
+    local hh = humanoid.HipHeight or 2.0
+    local fy = hrp.Position.Y - hh
+    local sz = th.Size
+    local hTop = th.Position.Y + sz.Y * 0.5
+    -- Feet anywhere from just below top to well above the head.
+    if fy >= (hTop - 0.6) and fy <= (hTop + 3.5) then
+        local dx = hrp.Position.X - th.Position.X
+        local dz = hrp.Position.Z - th.Position.Z
+        local hd = math.sqrt(dx*dx + dz*dz)
+        local r = math.max(sz.X, sz.Z) * 0.5 + 1.8
+        if hd <= r then return true end
+    end
     return false
 end
 
 local function watchPlayerJumps(player)
     if targetJumpConns[player] then return end
     local rec = {}
-    local function bindHumanoid(hum)
-        if not hum then return end
+    local function bind(h)
+        if not h then return end
         if rec.humConn then pcall(function() rec.humConn:Disconnect() end) end
-        rec.humConn = hum.Jumping:Connect(function()
+        rec.humConn = h.Jumping:Connect(function()
             if not alive or player == localPlayer then return end
-            if jumpBoostEnabled and not sideTechAnimPlaying then
-                if not stickyTarget and isActivelyOnHeadOf(player) then
-                    local head = headCache[player]
-                    if head and head.Parent then applyJumpBoost(head) end
+            if jumpBoostEnabled and not sideTechAnimPlaying and not stickyTarget then
+                if isActivelyOnHeadOf(player) then
+                    applyJumpBoost()
                 end
             end
         end)
     end
     if player.Character then
-        local hum = player.Character:FindFirstChildOfClass("Humanoid")
-        if hum then bindHumanoid(hum) end
+        local h = player.Character:FindFirstChildOfClass("Humanoid")
+        if h then bind(h) end
     end
-    rec.charConn = player.CharacterAdded:Connect(function(char)
+    rec.charConn = player.CharacterAdded:Connect(function(c)
         if not alive then return end
-        local hum = char:WaitForChild("Humanoid", 5)
-        if hum then bindHumanoid(hum) end
+        local h = c:WaitForChild("Humanoid", 5)
+        if h then bind(h) end
     end)
     targetJumpConns[player] = rec
 end
@@ -1396,31 +1235,27 @@ local function unwatchPlayerJumps(player)
 end
 
 -------------------------------------------------
--- SWAT / BALL CARRIER TRACKING
+-- SWAT / BALL
 -------------------------------------------------
-local function trySwat(_, ballPosOverride)
+local function trySwat(_, bpOverride)
     if not autoRushUnlocked or not autoRushActive then return end
     if not humanoid or not hrp or isFlying or stickyTarget or holdingFootball() then return end
     local now = tick()
     if now - lastSwatAt < SWAT_COOLDOWN then return end
-    local bp = ballPosOverride
+    local bp = bpOverride
     if not bp then
         local ball = findFootball and findFootball()
         bp = ballPos(ball)
     end
-    if not bp then return end
-    if (bp - hrp.Position).Magnitude > SWAT_RANGE then return end
+    if not bp or (bp - hrp.Position).Magnitude > SWAT_RANGE then return end
     lastSwatAt = now
     local flat = Vector3.new(bp.X - hrp.Position.X, 0, bp.Z - hrp.Position.Z)
     if flat.Magnitude > 0.5 then
-        local vel = hrp.AssemblyLinearVelocity
+        local v = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + flat.Unit)
-        hrp.AssemblyLinearVelocity = vel
+        hrp.AssemblyLinearVelocity = v
     end
-    pressKey(Enum.KeyCode.Space)
-    if humanoid then
-        pcall(function() humanoid.Jump = true end)
-    end
+    if humanoid then pcall(function() humanoid.Jump = true end) end
 end
 
 local function clearThrowWatch()
@@ -1428,55 +1263,48 @@ local function clearThrowWatch()
     lastCarrierForThrowWatch = nil
     throwWatchBallPrevPos = nil
 end
-
-local function installThrowWatch(char)
-    if not char then return end
-    if lastCarrierForThrowWatch == char and carrierThrowConn then return end
+local function installThrowWatch(c)
+    if not c then return end
+    if lastCarrierForThrowWatch == c and carrierThrowConn then return end
     clearThrowWatch()
-    lastCarrierForThrowWatch = char
-    carrierThrowConn = char.ChildRemoved:Connect(function(child)
-        if not alive or child.Name ~= FOOTBALL_NAME then return end
-        local bp = ballPos(child)
+    lastCarrierForThrowWatch = c
+    carrierThrowConn = c.ChildRemoved:Connect(function(ch)
+        if not alive or ch.Name ~= FOOTBALL_NAME then return end
+        local bp = ballPos(ch)
         if not bp and findFootball then bp = ballPos(findFootball()) end
-        if bp then trySwat("childremoved", bp) end
+        if bp then trySwat("cr", bp) end
     end)
 end
-
-local function bindCarrierTracking(char)
-    if not char then return end
-    track(char.ChildAdded:Connect(function(child)
+local function bindCarrierTracking(c)
+    if not c then return end
+    track(c.ChildAdded:Connect(function(ch)
         if not alive then return end
-        if child.Name == FOOTBALL_NAME and char ~= localPlayer.Character then
-            ballCarrierChar = char
-            installThrowWatch(char)
+        if ch.Name == FOOTBALL_NAME and c ~= localPlayer.Character then
+            ballCarrierChar = c
+            installThrowWatch(c)
         end
     end))
-    track(char.ChildRemoved:Connect(function(child)
-        if not alive or child.Name ~= FOOTBALL_NAME then return end
-        if ballCarrierChar == char then ballCarrierChar = nil end
-        if char ~= localPlayer.Character then
-            local bp = ballPos(child)
+    track(c.ChildRemoved:Connect(function(ch)
+        if not alive or ch.Name ~= FOOTBALL_NAME then return end
+        if ballCarrierChar == c then ballCarrierChar = nil end
+        if c ~= localPlayer.Character then
+            local bp = ballPos(ch)
             if not bp and findFootball then bp = ballPos(findFootball()) end
-            if bp then trySwat("released", bp) end
+            if bp then trySwat("rel", bp) end
         end
-        if lastCarrierForThrowWatch == char then clearThrowWatch() end
+        if lastCarrierForThrowWatch == c then clearThrowWatch() end
     end))
-    if char:FindFirstChild(FOOTBALL_NAME) and char ~= localPlayer.Character then
-        ballCarrierChar = char
-        installThrowWatch(char)
+    if c:FindFirstChild(FOOTBALL_NAME) and c ~= localPlayer.Character then
+        ballCarrierChar = c
+        installThrowWatch(c)
     end
 end
 
--------------------------------------------------
--- BALL LIST
--------------------------------------------------
 local function scanBallListOnce()
     local list, seen = {}, {}
-    local function add(o)
-        if o and not seen[o] then seen[o] = true; list[#list+1] = o end
-    end
-    local myChar = localPlayer.Character
-    if myChar then add(myChar:FindFirstChild(FOOTBALL_NAME)) end
+    local function add(o) if o and not seen[o] then seen[o]=true; list[#list+1]=o end end
+    local mc = localPlayer.Character
+    if mc then add(mc:FindFirstChild(FOOTBALL_NAME)) end
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
@@ -1493,7 +1321,6 @@ local function scanBallListOnce()
     refreshCounter = refreshCounter + 1
     ballList = list
 end
-
 task.spawn(function()
     scanBallListOnce()
     while alive do
@@ -1510,16 +1337,17 @@ findFootball = function()
         if not b or not b.Parent then table.remove(ballList, i) end
     end
     if #ballList == 0 then return nil end
-    local myPos = hrp.Position
-    local best, bestDist = nil, math.huge    for i = 1, #ballList do
+    local mp = hrp.Position
+    local b, bD = nil, math.huge
+    for i = 1, #ballList do
         local c = ballList[i]
-        local pos = ballPos(c)
-        if pos then
-            local d = (pos - myPos).Magnitude
-            if d < bestDist then bestDist = d; best = c end
+        local p = ballPos(c)
+        if p then
+            local d = (p - mp).Magnitude
+            if d < bD then bD = d; b = c end
         end
     end
-    return best or ballList[1]
+    return b or ballList[1]
 end
 
 -------------------------------------------------
@@ -1534,16 +1362,11 @@ local function stopActiveRush()
         if not humanoid.AutoRotate then humanoid.AutoRotate = true end
     end
 end
-
-local function disableAutoRush()
-    autoRushUnlocked = false
-    stopActiveRush()
-end
-
+local function disableAutoRush() autoRushUnlocked = false; stopActiveRush() end
 local function toggleActiveRush()
     if not autoRushUnlocked then return end
     if not autoRushAllowed() then
-        Rayfield:Notify({Title="Auto Rush", Content="WalkSpeed must be 21 or higher.", Duration=3})
+        Rayfield:Notify({Title="Auto Rush", Content="WalkSpeed must be 21+.", Duration=3})
         return
     end
     task.defer(function()
@@ -1556,114 +1379,105 @@ local function toggleActiveRush()
             autoRushActive = true
             rushEngageStartAt = 0
             lastRushCarrier = nil
-            local carrier = getBallCarrier()
-            if carrier then
-                lastRushCarrier = carrier
-                rushEngageStartAt = tick()
-            end
+            local c = getBallCarrier()
+            if c then lastRushCarrier = c; rushEngageStartAt = tick() end
             Rayfield:Notify({Title="Auto Rush", Content="On", Duration=2})
         end
     end)
 end
 
 local function rushTargetPos()
-    local carrier = getBallCarrier()
-    if not carrier then
-        if lastRushCarrier ~= nil then
-            lastRushCarrier = nil
-            rushEngageStartAt = 0
-        end
+    local c = getBallCarrier()
+    if not c then
+        if lastRushCarrier ~= nil then lastRushCarrier = nil; rushEngageStartAt = 0 end
         return ballPos(findFootball and findFootball())
     end
-    if carrier ~= lastRushCarrier or rushEngageStartAt == 0 then
-        lastRushCarrier = carrier
+    if c ~= lastRushCarrier or rushEngageStartAt == 0 then
+        lastRushCarrier = c
         rushEngageStartAt = tick()
     end
-    local theirHrp = carrier:FindFirstChild("HumanoidRootPart")
-    if not theirHrp then return ballPos(findFootball and findFootball()) end
-    local theirPos = theirHrp.Position
-    if not hrp then return theirPos + QB_CHEST_OFFSET end
-    local chest = theirPos + QB_CHEST_OFFSET
-    local myPos = hrp.Position
-    local vel = theirHrp.AssemblyLinearVelocity
-    local flatVel = Vector3.new(vel.X, 0, vel.Z)
-    local speed = flatVel.Magnitude
-    if speed < 1.0 then return chest end
-    local hisDir = flatVel / speed
-    local toHim = Vector3.new(theirPos.X - myPos.X, 0, theirPos.Z - myPos.Z)
-    local dist = toHim.Magnitude
+    local th = c:FindFirstChild("HumanoidRootPart")
+    if not th then return ballPos(findFootball and findFootball()) end
+    local tp = th.Position
+    if not hrp then return tp + QB_CHEST_OFFSET end
+    local chest = tp + QB_CHEST_OFFSET
+    local mp = hrp.Position
+    local v = th.AssemblyLinearVelocity
+    local fv = Vector3.new(v.X, 0, v.Z)
+    local sp = fv.Magnitude
+    if sp < 1.0 then return chest end
+    local hd = fv / sp
+    local th_ = Vector3.new(tp.X - mp.X, 0, tp.Z - mp.Z)
+    local dist = th_.Magnitude
     if dist < 0.01 then return chest end
-    local mySpeed = walkSpeed
-    if mySpeed < 1 then mySpeed = 1 end
-    local a = speed*speed - mySpeed*mySpeed
-    local b = 2 * toHim:Dot(flatVel)
-    local c = dist * dist
-    local tIntercept = nil
+    local ms = walkSpeed
+    if ms < 1 then ms = 1 end
+    local a = sp*sp - ms*ms
+    local b = 2*th_:Dot(fv)
+    local cc = dist*dist
+    local ti
     if math.abs(a) < 1e-4 then
         if math.abs(b) > 1e-4 then
-            local t = -c / b
-            if t > 0 then tIntercept = t end
+            local t = -cc / b
+            if t > 0 then ti = t end
         end
     else
-        local disc = b*b - 4*a*c
+        local disc = b*b - 4*a*cc
         if disc >= 0 then
             local sq = math.sqrt(disc)
             local t1 = (-b + sq) / (2*a)
             local t2 = (-b - sq) / (2*a)
-            if t1 > 0 and (not tIntercept or t1 < tIntercept) then tIntercept = t1 end
-            if t2 > 0 and (not tIntercept or t2 < tIntercept) then tIntercept = t2 end
+            if t1 > 0 and (not ti or t1 < ti) then ti = t1 end
+            if t2 > 0 and (not ti or t2 < ti) then ti = t2 end
         end
     end
-    if not tIntercept or tIntercept <= 0 then tIntercept = 0.6 end
-    tIntercept = math.clamp(tIntercept, RUSH_T_MIN, RUSH_T_MAX)
-    local aim = chest + flatVel * (tIntercept * RUSH_OVERSHOOT)
-    local forwardFromHim = (aim - theirPos):Dot(hisDir)
-    if forwardFromHim < RUSH_FORWARD_MIN then
-        aim = aim + hisDir * (RUSH_FORWARD_MIN - forwardFromHim)
-    end
-    local aimVec = aim - theirPos
-    local aimLen = aimVec.Magnitude
-    if aimLen > dist then aim = theirPos + aimVec.Unit * dist end
+    if not ti or ti <= 0 then ti = 0.6 end
+    ti = math.clamp(ti, RUSH_T_MIN, RUSH_T_MAX)
+    local aim = chest + fv * (ti * RUSH_OVERSHOOT)
+    local fwd = (aim - tp):Dot(hd)
+    if fwd < RUSH_FORWARD_MIN then aim = aim + hd * (RUSH_FORWARD_MIN - fwd) end
+    local av = aim - tp
+    local al = av.Magnitude
+    if al > dist then aim = tp + av.Unit * dist end
     return aim
 end
 
 -------------------------------------------------
 -- REFRESH
 -------------------------------------------------
-local function raycastFloorYawOnly(fromCFrame, charToIgnore)
-    local origin = fromCFrame.Position + Vector3.new(0, 6, 0)
-    local dir = Vector3.new(0, -60, 0)
+local function raycastFloorYawOnly(cf, ignChar)
+    local orig = cf.Position + Vector3.new(0,6,0)
+    local dir = Vector3.new(0,-60,0)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    local ignore = {}
-    if charToIgnore then
-        for _, d in ipairs(charToIgnore:GetDescendants()) do
-            if d:IsA("BasePart") then ignore[#ignore+1] = d end
+    local ign = {}
+    if ignChar then
+        for _, d in ipairs(ignChar:GetDescendants()) do
+            if d:IsA("BasePart") then ign[#ign+1] = d end
         end
     end
     if localPlayer.Character then
         for _, d in ipairs(localPlayer.Character:GetDescendants()) do
-            if d:IsA("BasePart") then ignore[#ignore+1] = d end
+            if d:IsA("BasePart") then ign[#ign+1] = d end
         end
     end
-    params.FilterDescendantsInstances = ignore
-    local hit = workspace:Raycast(origin, dir, params)
-    local look = fromCFrame.LookVector
-    local flatLook = Vector3.new(look.X, 0, look.Z)
-    if flatLook.Magnitude < 0.001 then flatLook = Vector3.new(0,0,-1) else flatLook = flatLook.Unit end
-    local basePos = hit and (hit.Position + Vector3.new(0,3,0)) or fromCFrame.Position
-    return CFrame.lookAt(basePos, basePos + flatLook)
+    params.FilterDescendantsInstances = ign
+    local hit = workspace:Raycast(orig, dir, params)
+    local l = cf.LookVector
+    local fl = Vector3.new(l.X, 0, l.Z)
+    if fl.Magnitude < 0.001 then fl = Vector3.new(0,0,-1) else fl = fl.Unit end
+    local base = hit and (hit.Position + Vector3.new(0,3,0)) or cf.Position
+    return CFrame.lookAt(base, base + fl)
 end
 
 local function pinRefresh()
     if not refreshPinning then return end
-    local char = refreshPinChar
-    if not char or char ~= localPlayer.Character then
-        refreshPinning = false; refreshPinChar = nil; refreshPinCF = nil
-        return
+    local c = refreshPinChar
+    if not c or c ~= localPlayer.Character then
+        refreshPinning = false; refreshPinChar = nil; refreshPinCF = nil; return
     end
-    local h = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local h = c:FindFirstChild("HumanoidRootPart")
+    local hum = c:FindFirstChildOfClass("Humanoid")
     if not h or not hum then return end
     pcall(function() h.CFrame = refreshPinCF end)
     pcall(function()
@@ -1676,46 +1490,46 @@ local function pinRefresh()
 end
 
 local function refreshCharacter()
-    local char = localPlayer.Character
-    if not char then return end
-    local h = char:FindFirstChild("HumanoidRootPart")
+    local c = localPlayer.Character
+    if not c then return end
+    local h = c:FindFirstChild("HumanoidRootPart")
     savedRefreshCFrame = h and h.CFrame or nil
     if stickyTarget then detachSticky() end
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hum = c:FindFirstChildOfClass("Humanoid")
     if hum then
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead) end)
         pcall(function() hum.Health = 0 end)
     end
     task.spawn(function()
         task.wait(0.2)
-        if localPlayer.Character == char then pcall(function() char:BreakJoints() end) end
+        if localPlayer.Character == c then pcall(function() c:BreakJoints() end) end
         task.wait(0.6)
-        if localPlayer.Character == char then
+        if localPlayer.Character == c then
             savedRefreshCFrame = nil
-            Rayfield:Notify({Title="Refresh", Content="Server blocked the reset.", Duration=4})
+            Rayfield:Notify({Title="Refresh", Content="Server blocked.", Duration=4})
         end
     end)
 end
 
-track(localPlayer.CharacterAdded:Connect(function(char)
+track(localPlayer.CharacterAdded:Connect(function(c)
     if not alive or not savedRefreshCFrame then return end
     local savedCF = savedRefreshCFrame
     savedRefreshCFrame = nil
     task.spawn(function()
-        local h = char:WaitForChild("HumanoidRootPart", 5)
-        local hum = char:WaitForChild("Humanoid", 5)
+        local h = c:WaitForChild("HumanoidRootPart", 5)
+        local hum = c:WaitForChild("Humanoid", 5)
         if not h or not hum then return end
         task.wait(0.05)
-        local targetCF = raycastFloorYawOnly(savedCF, char)
-        refreshPinChar = char
+        local targetCF = raycastFloorYawOnly(savedCF, c)
+        refreshPinChar = c
         refreshPinCF = targetCF
         refreshPinning = true
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
         pinRefresh()
         task.wait(0.25)
-        if refreshPinning and refreshPinChar == char then
-            refreshPinCF = raycastFloorYawOnly(refreshPinCF, char)
+        if refreshPinning and refreshPinChar == c then
+            refreshPinCF = raycastFloorYawOnly(refreshPinCF, c)
         end
         task.wait(0.45)
         refreshPinning = false
@@ -1726,28 +1540,26 @@ track(localPlayer.CharacterAdded:Connect(function(char)
             h.AssemblyAngularVelocity = V3_ZERO
         end)
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
-        if lockActive() then
-            pcall(function() hum.WalkSpeed = walkSpeed end)
-        end
+        if lockActive() then pcall(function() hum.WalkSpeed = walkSpeed end) end
     end)
 end))
 
 -------------------------------------------------
 -- CHARACTER HOOK
 -------------------------------------------------
-local function hookChar(char)
+local function hookChar(c)
     task.spawn(function()
-        if not char or not char.Parent then return end
-        humanoid = char:WaitForChild("Humanoid", 10)
+        if not c or not c.Parent then return end
+        humanoid = c:WaitForChild("Humanoid", 10)
         if not humanoid then return end
-        hrp = char:WaitForChild("HumanoidRootPart", 10)
+        hrp = c:WaitForChild("HumanoidRootPart", 10)
         if not hrp then return end
         walkSpeedLockSuspended = false
         enforceWalkSpeed()
         installWalkSpeedLock(humanoid)
-        local animator = humanoid:WaitForChild("Animator", 10)
-        if animator then
-            track(animator.AnimationPlayed:Connect(function(tr)
+        local anim = humanoid:WaitForChild("Animator", 10)
+        if anim then
+            track(anim.AnimationPlayed:Connect(function(tr)
                 if not alive then return end
                 if tr.Animation and tr.Animation.AnimationId == SIDE_TECH_ANIM_ID then
                     sideTechAnimPlaying = true
@@ -1781,7 +1593,7 @@ local function hookChar(char)
             detachStickyTargetJumpConn()
             if stickyAnimConn then pcall(function() stickyAnimConn:Disconnect() end); stickyAnimConn = nil end
             if humanoid then
-                for s, _ in pairs(disabledStates) do humanoid:SetStateEnabled(s, true) end
+                for s,_ in pairs(disabledStates) do humanoid:SetStateEnabled(s, true) end
                 disabledStates = {}
                 if savedWalkSpeed then humanoid.WalkSpeed = savedWalkSpeed end
                 if savedJumpPower then humanoid.JumpPower = savedJumpPower end
@@ -1792,13 +1604,13 @@ local function hookChar(char)
 end
 
 -------------------------------------------------
--- PLAYER LIFECYCLE
+-- LIFECYCLE
 -------------------------------------------------
-local function onOtherPlayerCharacter(char)
-    if not char then return end
-    local ply = Players:GetPlayerFromCharacter(char)
-    if ply then bindCharacter(ply, char) end
-    bindCarrierTracking(char)
+local function onOtherPlayerCharacter(c)
+    if not c then return end
+    local ply = Players:GetPlayerFromCharacter(c)
+    if ply then bindCharacter(ply, c) end
+    bindCarrierTracking(c)
 end
 
 for i = 1, #cachedPlayers do
@@ -1850,13 +1662,11 @@ track(UIS.InputBegan:Connect(function(i, gp)
     end
     if stickyTarget then
         local key = i.KeyCode
-        local isMoveKey = (key == Enum.KeyCode.W or key == Enum.KeyCode.A
+        local isMove = (key == Enum.KeyCode.W or key == Enum.KeyCode.A
                         or key == Enum.KeyCode.S or key == Enum.KeyCode.D)
-        local isJumpKey = (key == Enum.KeyCode.Space)
-        local isDiveInput = (i.UserInputType == Enum.UserInputType.MouseButton1)
-        if isMoveKey or isJumpKey or isDiveInput then
-            stickyReleaseInput = true
-        end
+        local isJump = (key == Enum.KeyCode.Space)
+        local isDive = (i.UserInputType == Enum.UserInputType.MouseButton1)
+        if isMove or isJump or isDive then stickyReleaseInput = true end
     end
 end))
 
@@ -1878,37 +1688,34 @@ local function updateProxyCollision()
         for i = 1, #cachedPlayers do
             local p = cachedPlayers[i]
             if p ~= localPlayer then
-                local proxy = headProxies[p]
-                if proxy and proxy.Parent and proxy.CanCollide then proxy.CanCollide = false end
-                local head = headCache[p]
-                if head then proxyEngaged[head] = nil end
+                local pr = headProxies[p]
+                if pr and pr.Parent and pr.CanCollide then pr.CanCollide = false end
+                local h = headCache[p]
+                if h then proxyEngaged[h] = nil end
             end
         end
         return
     end
     local now = tick()
-    local jumpedRecently = (now - lastJumpRequestAt) <= JUMP_ATTACH_WINDOW
+    local jr = (now - lastJumpRequestAt) <= JUMP_ATTACH_WINDOW
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
-            local proxy = headProxies[p]
-            local head = headCache[p]
-            if proxy and proxy.Parent and head and head.Parent then
-                proxy.Size = head.Size
-                proxy.CFrame = head.CFrame
-                local engaged = proxyEngaged[head] == true
-                local overTight = feetOverHead(head, PROXY_FOOTPRINT_PAD, PROXY_FEET_ABOVE_TOLERANCE)
-                local overLoose = feetOverHead(head, PROXY_ENGAGED_PAD, PROXY_FEET_ABOVE_TOLERANCE)
+            local pr = headProxies[p]
+            local h = headCache[p]
+            if pr and pr.Parent and h and h.Parent then
+                pr.Size = h.Size
+                pr.CFrame = h.CFrame
+                local eng = proxyEngaged[h] == true
+                local tight = feetOverHead(h, PROXY_FOOTPRINT_PAD, PROXY_FEET_ABOVE_TOLERANCE)
+                local loose = feetOverHead(h, PROXY_ENGAGED_PAD, PROXY_FEET_ABOVE_TOLERANCE)
                 local solid = false
-                if engaged then
-                    if overLoose then solid = true else proxyEngaged[head] = nil end
+                if eng then
+                    if loose then solid = true else proxyEngaged[h] = nil end
                 else
-                    if overTight and jumpedRecently then
-                        proxyEngaged[head] = true
-                        solid = true
-                    end
+                    if tight and jr then proxyEngaged[h] = true; solid = true end
                 end
-                if proxy.CanCollide ~= solid then proxy.CanCollide = solid end
+                if pr.CanCollide ~= solid then pr.CanCollide = solid end
             end
         end
     end
@@ -1951,11 +1758,8 @@ end)
 track(RunService.Heartbeat:Connect(function()
     if not alive then return end
     if hrp and humanoid and not holdingFootball() then
-        local live = rocketHeadCheckNow()
-        if live then
-            lastOnHeadAt = tick()
-            lastOnHeadRef = live
-        end
+        local lv = rocketHeadCheckNow()
+        if lv then lastOnHeadAt = tick(); lastOnHeadRef = lv end
     end
 end))
 
@@ -1973,10 +1777,10 @@ track(RunService.Heartbeat:Connect(function()
     for i = 1, #cachedPlayers do
         local p = cachedPlayers[i]
         if p ~= localPlayer then
-            local head = headCache[p]
-            if head and head.Parent and head.CanCollide then
-                if origCanCollide[head] == nil then origCanCollide[head] = true end
-                pcall(function() head.CanCollide = false end)
+            local h = headCache[p]
+            if h and h.Parent and h.CanCollide then
+                if origCanCollide[h] == nil then origCanCollide[h] = true end
+                pcall(function() h.CanCollide = false end)
             end
         end
     end
@@ -2010,16 +1814,14 @@ task.spawn(function()
     while alive do
         task.wait(THROW_DETECT_INTERVAL)
         if not alive then break end
-        local carrier = getBallCarrier()
-        if carrier then
-            local ball = carrier:FindFirstChild(FOOTBALL_NAME)
+        local c = getBallCarrier()
+        if c then
+            local ball = c:FindFirstChild(FOOTBALL_NAME)
             local bp = ballPos(ball)
             if bp then
                 if throwWatchBallPrevPos then
-                    local delta = (bp - throwWatchBallPrevPos).Magnitude
-                    if delta / THROW_DETECT_INTERVAL >= THROW_VELOCITY_THRESHOLD then
-                        trySwat("velocity", bp)
-                    end
+                    local d = (bp - throwWatchBallPrevPos).Magnitude
+                    if d / THROW_DETECT_INTERVAL >= THROW_VELOCITY_THRESHOLD then trySwat("v", bp) end
                 end
                 throwWatchBallPrevPos = bp
             else
@@ -2041,6 +1843,15 @@ end))
 -------------------------------------------------
 track(RunService.Heartbeat:Connect(function(dt)
     if not alive or not hrp or not humanoid or refreshPinning then return end
+
+    -- Force the jump boost's upward velocity for a short window so the
+    -- humanoid controller can't cancel it before we lift off.
+    if jumpBoostHoldUntil > tick() then
+        local v = hrp.AssemblyLinearVelocity
+        if v.Y < jumpBoostHoldVelocity then
+            hrp.AssemblyLinearVelocity = Vector3.new(v.X, jumpBoostHoldVelocity, v.Z)
+        end
+    end
 
     if isRagdolled() then
         if stickyTarget then detachSticky() end
@@ -2066,12 +1877,12 @@ track(RunService.Heartbeat:Connect(function(dt)
 
     if autoRushActive and not autoRushAllowed() then
         stopActiveRush()
-        Rayfield:Notify({Title="Auto Rush", Content="Off (WalkSpeed < 21)", Duration=3})
+        Rayfield:Notify({Title="Auto Rush", Content="Off", Duration=3})
     end
 
     if lastMyPos then
-        local jumped = (hrp.Position - lastMyPos).Magnitude > TELEPORT_THRESHOLD
-        if jumped then
+        local j = (hrp.Position - lastMyPos).Magnitude > TELEPORT_THRESHOLD
+        if j then
             if stickyTarget then detachSticky() end
             jumpBoostHoldUntil = 0
             jumpBoostHoldVelocity = 0
@@ -2083,34 +1894,33 @@ track(RunService.Heartbeat:Connect(function(dt)
     end
     lastMyPos = hrp.Position
 
-    if isHoldingSideTech and sideTechTargetLookVector
-       and not isShiftLocked() and not sideTechAnimPlaying then
-        local vel = hrp.AssemblyLinearVelocity
+    if isHoldingSideTech and sideTechTargetLookVector and not isShiftLocked() and not sideTechAnimPlaying then
+        local v = hrp.AssemblyLinearVelocity
         hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + sideTechTargetLookVector)
-        hrp.AssemblyLinearVelocity = vel
+        hrp.AssemblyLinearVelocity = v
     end
 
     if sideTechAnimPlaying and not prevDiveState then
         local dir
         if autoRushActive then
-            local targetPos = rushTargetPos()
-            if targetPos then
-                local diff = targetPos - hrp.Position
-                local flat = Vector3.new(diff.X, 0, diff.Z)
-                if flat.Magnitude > 0.5 then dir = flat.Unit end
+            local tp = rushTargetPos()
+            if tp then
+                local d = tp - hrp.Position
+                local f = Vector3.new(d.X, 0, d.Z)
+                if f.Magnitude > 0.5 then dir = f.Unit end
             end
         end
         if not dir then dir = diveDirection() end
         diveLockedDir = dir
         local base = hrp.AssemblyLinearVelocity
-        local horiz = Vector3.new(base.X, 0, base.Z)
-        local speed
-        if diveBoostEnabled and diveBoostSpeed > 0 then speed = diveBoostSpeed else speed = DIVE_RUSH_BASE_SPEED end
-        local onHead = isOnHeadForRocketBoost()
-        if onHead and rocketBoostEnabled and (math.random() * 100 <= rocketBoostChance) then
-            speed = (ROCKET_BOOST_LEVEL - 1) * DIVE_LEVEL_STEP
+        local hz = Vector3.new(base.X, 0, base.Z)
+        local sp
+        if diveBoostEnabled and diveBoostSpeed > 0 then sp = diveBoostSpeed else sp = DIVE_RUSH_BASE_SPEED end
+        local oh = isOnHeadForRocketBoost()
+        if oh and rocketBoostEnabled and (math.random()*100 <= rocketBoostChance) then
+            sp = (ROCKET_BOOST_LEVEL - 1) * DIVE_LEVEL_STEP
         end
-        hrp.AssemblyLinearVelocity = horiz + dir * speed + Vector3.new(0, base.Y, 0)
+        hrp.AssemblyLinearVelocity = hz + dir*sp + Vector3.new(0, base.Y, 0)
     end
     if not sideTechAnimPlaying then diveLockedDir = nil end
     prevDiveState = sideTechAnimPlaying
@@ -2119,12 +1929,12 @@ track(RunService.Heartbeat:Connect(function(dt)
         local ball = findFootball and findFootball()
         local bp = ballPos(ball)
         if bp then
-            local direction = bp - hrp.Position
-            local currentDistance = direction.Magnitude
-            if currentDistance <= 4.5 then
+            local dir = bp - hrp.Position
+            local d = dir.Magnitude
+            if d <= 4.5 then
                 hrp.AssemblyLinearVelocity = V3_ZERO
-            elseif currentDistance > 2 then
-                hrp.AssemblyLinearVelocity = direction.Unit * pullSpeed
+            elseif d > 2 then
+                hrp.AssemblyLinearVelocity = dir.Unit * pullSpeed
             end
         end
     end
@@ -2132,10 +1942,8 @@ track(RunService.Heartbeat:Connect(function(dt)
     if autoRushUnlocked and autoRushActive and autoRushAllowed() and not isFlying and not stickyTarget then
         if sideTechAnimPlaying then
             if diveLockedDir then
-                local vel = hrp.AssemblyLinearVelocity
-                hrp.AssemblyLinearVelocity = Vector3.new(
-                    diveLockedDir.X * walkSpeed, vel.Y, diveLockedDir.Z * walkSpeed
-                )
+                local v = hrp.AssemblyLinearVelocity
+                hrp.AssemblyLinearVelocity = Vector3.new(diveLockedDir.X*walkSpeed, v.Y, diveLockedDir.Z*walkSpeed)
             end
         else
             if humanoid.PlatformStand then humanoid.PlatformStand = false end
@@ -2144,28 +1952,27 @@ track(RunService.Heartbeat:Connect(function(dt)
                 pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
             end
             if humanoid.AutoRotate then humanoid.AutoRotate = false end
-            local targetPos = rushTargetPos()
-            if targetPos then
-                local diff = targetPos - hrp.Position
-                local flat = Vector3.new(diff.X, 0, diff.Z)
-                local flatMag = flat.Magnitude
-                if flatMag > 0.05 then
-                    local dir = flat / flatMag
-                    local vel = hrp.AssemblyLinearVelocity
-                    hrp.AssemblyLinearVelocity = Vector3.new(dir.X * walkSpeed, vel.Y, dir.Z * walkSpeed)
+            local tp = rushTargetPos()
+            if tp then
+                local d = tp - hrp.Position
+                local f = Vector3.new(d.X, 0, d.Z)
+                local fm = f.Magnitude
+                if fm > 0.05 then
+                    local dir = f / fm
+                    local v = hrp.AssemblyLinearVelocity
+                    hrp.AssemblyLinearVelocity = Vector3.new(dir.X*walkSpeed, v.Y, dir.Z*walkSpeed)
                     local curCF = hrp.CFrame
-                    local curYaw = yawFromCFrame(curCF)
-                    local tgtYaw = math.atan2(-dir.X, -dir.Z)
-                    local delta = angleDelta(curYaw, tgtYaw)
+                    local curY = yawFromCFrame(curCF)
+                    local tgtY = math.atan2(-dir.X, -dir.Z)
+                    local delta = angleDelta(curY, tgtY)
                     if math.abs(delta) < YAW_DEAD_ZONE then
                         delta = 0
                     else
-                        local maxStep = TURN_RATE * dt
-                        if delta > maxStep then delta = maxStep elseif delta < -maxStep then delta = -maxStep end
+                        local ms = TURN_RATE * dt
+                        if delta > ms then delta = ms elseif delta < -ms then delta = -ms end
                     end
                     if delta ~= 0 then
-                        local newCF = CFrame.new(curCF.Position) * CFrame.Angles(0, curYaw + delta, 0)
-                        hrp.CFrame = newCF
+                        hrp.CFrame = CFrame.new(curCF.Position) * CFrame.Angles(0, curY + delta, 0)
                     end
                     hrp.AssemblyAngularVelocity = Vector3.zero
                     humanoid:Move(dir, false)
@@ -2187,27 +1994,27 @@ track(RunService.Heartbeat:Connect(function(dt)
         if humanoid:GetState() == Enum.HumanoidStateType.Physics then
             pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
         end
-        local move = V3_ZERO
-        if UIS:IsKeyDown(Enum.KeyCode.W) then move += camera.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then move -= camera.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then move -= camera.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then move += camera.CFrame.RightVector end
-        local vertical = 0
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then vertical = vertical + 1 end
-        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then vertical = vertical - 1 end
-        local targetVec = (move.Magnitude > 0) and move.Unit * flySpeed or V3_ZERO
-        targetVec = Vector3.new(targetVec.X, vertical * flySpeed * 0.6, targetVec.Z)
-        flyVelocity = flyVelocity:Lerp(targetVec, math.min(flyAccel * dt, 1))
-        local hv = Vector3.new(flyVelocity.X, 0, flyVelocity.Z)
-        if hv.Magnitude > FLY_MAX_VELOCITY then hv = hv.Unit * FLY_MAX_VELOCITY end
+        local mv = V3_ZERO
+        if UIS:IsKeyDown(Enum.KeyCode.W) then mv += camera.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then mv -= camera.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then mv -= camera.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then mv += camera.CFrame.RightVector end
+        local vy = 0
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then vy = vy + 1 end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then vy = vy - 1 end
+        local tv = (mv.Magnitude > 0) and mv.Unit*flySpeed or V3_ZERO
+        tv = Vector3.new(tv.X, vy*flySpeed*0.6, tv.Z)
+        flyVelocity = flyVelocity:Lerp(tv, math.min(flyAccel*dt, 1))
+        local hz = Vector3.new(flyVelocity.X, 0, flyVelocity.Z)
+        if hz.Magnitude > FLY_MAX_VELOCITY then hz = hz.Unit*FLY_MAX_VELOCITY end
         local vv = math.clamp(flyVelocity.Y, -FLY_VERTICAL_CAP, FLY_VERTICAL_CAP)
-        flyVelocity = Vector3.new(hv.X, vv, hv.Z)
-        local vel = hrp.AssemblyLinearVelocity
-        local newVX = vel.X + (flyVelocity.X - vel.X) * math.min(dt * 8, 1)
-        local newVZ = vel.Z + (flyVelocity.Z - vel.Z) * math.min(dt * 8, 1)
-        local newVY = vel.Y + (flyVelocity.Y - vel.Y) * math.min(dt * 8, 1)
-        if vertical == 0 then newVY = newVY + gravityVal * dt * FLY_HOVER_LIFT end
-        hrp.AssemblyLinearVelocity = Vector3.new(newVX, newVY, newVZ)
+        flyVelocity = Vector3.new(hz.X, vv, hz.Z)
+        local v = hrp.AssemblyLinearVelocity
+        local nvx = v.X + (flyVelocity.X - v.X)*math.min(dt*8, 1)
+        local nvz = v.Z + (flyVelocity.Z - v.Z)*math.min(dt*8, 1)
+        local nvy = v.Y + (flyVelocity.Y - v.Y)*math.min(dt*8, 1)
+        if vy == 0 then nvy = nvy + gravityVal*dt*FLY_HOVER_LIFT end
+        hrp.AssemblyLinearVelocity = Vector3.new(nvx, nvy, nvz)
     else
         flyVelocity = V3_ZERO
     end
@@ -2219,12 +2026,11 @@ track(RunService.Heartbeat:Connect(function(dt)
     if stickyHeadEnabled and not isFlying and not hasBall and not sideTechAnimPlaying
        and not autoRushBlocksHeadTech() then
         if stickyReattachLocked then
-            local overAny = findFeetOverHead(FEET_OVER_HEAD_HORIZ_MARGIN, FEET_OVER_HEAD_VERT_TOLERANCE)
-            if overAny then
+            local over = findFeetOverHead(FEET_OVER_HEAD_HORIZ_MARGIN, FEET_OVER_HEAD_VERT_TOLERANCE)
+            if over then
                 stickyLockOffSince = nil
             else
-                if not stickyLockOffSince then
-                    stickyLockOffSince = now
+                if not stickyLockOffSince then stickyLockOffSince = now
                 elseif (now - stickyLockOffSince) >= STICKY_LOCK_CLEAR_DELAY then
                     stickyReattachLocked = false
                     stickyLockOffSince = nil
@@ -2233,56 +2039,52 @@ track(RunService.Heartbeat:Connect(function(dt)
         end
 
         if stickyTarget then
-            local parentChar = stickyTarget.Parent
-            local stillAlive = parentChar and parentChar.Parent == workspace
-            local badState = targetInBadState(parentChar)
-            local targetHoldsBall = parentChar and targetHasFootball(parentChar)
-            local targetDiving = parentChar and characterIsDiving(parentChar) or false
-
-            local lostContact = false
+            local pc = stickyTarget.Parent
+            local alive_ = pc and pc.Parent == workspace
+            local bad = targetInBadState(pc)
+            local holds = pc and targetHasFootball(pc)
+            local dive = pc and characterIsDiving(pc) or false
+            local lost = false
             if (now - attachTime) > EASE_DURATION then
-                lostContact = not feetOverHead(stickyTarget, STICKY_BREAK_MARGIN, STICKY_BREAK_VERT)
+                lost = not feetOverHead(stickyTarget, STICKY_BREAK_MARGIN, STICKY_BREAK_VERT)
             end
-
-            if stickyReleaseInput or not stillAlive or badState or targetHoldsBall or targetDiving or lostContact then
-                local reason = "other"
-                if stickyReleaseInput then reason = "input" end
-                if targetDiving then reason = "target_dive" end
-                if lostContact then reason = "lost_contact" end
-                detachSticky(reason)
+            if stickyReleaseInput or not alive_ or bad or holds or dive or lost then
+                local r = "other"
+                if stickyReleaseInput then r = "input" end
+                if dive then r = "target_dive" end
+                if lost then r = "lost_contact" end
+                detachSticky(r)
             end
         end
 
         if not stickyTarget and stickyCooldown <= 0 and jumpBoostStickyCooldown <= 0
            and not anyMoveKeyDown() and not hasBall and not stickyReattachLocked
            and jumpedRecently then
-            local head = findHeadInStickyRange()
-            if head then attachSticky(head) end
+            local h = findHeadInStickyRange()
+            if h then attachSticky(h) end
         end
 
         if stickyTarget then
-            local parentChar = stickyTarget.Parent
-            local headPos = stickyTarget.Position
+            local hp = stickyTarget.Position
             if stickyLastTargetHeadPos then
-                local headDelta = headPos - stickyLastTargetHeadPos
-                if headDelta.Magnitude <= STICKY_FOLLOW_TELEPORT_THRESHOLD then
-                    stickyAnchorPos = (stickyAnchorPos or headPos) + headDelta
+                local hd = hp - stickyLastTargetHeadPos
+                if hd.Magnitude <= STICKY_FOLLOW_TELEPORT_THRESHOLD then
+                    stickyAnchorPos = (stickyAnchorPos or hp) + hd
                 end
             end
-            stickyLastTargetHeadPos = headPos
-
-            local desiredPos = stickyAnchorPos or hrp.Position
-            local newPos
-            local elapsed = now - attachTime
-            if elapsed < EASE_DURATION then
-                local s = smoothstep(elapsed / EASE_DURATION)
-                newPos = (stickyAttachStartPos or hrp.Position):Lerp(desiredPos, s)
+            stickyLastTargetHeadPos = hp
+            local dp = stickyAnchorPos or hrp.Position
+            local np
+            local el = now - attachTime
+            if el < EASE_DURATION then
+                local s = smoothstep(el / EASE_DURATION)
+                np = (stickyAttachStartPos or hrp.Position):Lerp(dp, s)
             else
-                newPos = desiredPos
+                np = dp
                 stickyAttachStartPos = nil
             end
             local rot = stickyLockedRotation or (hrp.CFrame - hrp.CFrame.Position)
-            hrp.CFrame = CFrame.new(newPos) * rot
+            hrp.CFrame = CFrame.new(np) * rot
             hrp.AssemblyLinearVelocity = V3_ZERO
             hrp.AssemblyAngularVelocity = V3_ZERO
             humanoid:Move(V3_ZERO, false)
@@ -2291,16 +2093,16 @@ track(RunService.Heartbeat:Connect(function(dt)
                 stickyStateNextCheck = now + STICKY_STATE_CHECK_INTERVAL
                 pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
                 humanoid:Move(V3_ZERO, false)
-                local animator = humanoid:FindFirstChildOfClass("Animator")
-                if animator then
-                    for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+                local anim = humanoid:FindFirstChildOfClass("Animator")
+                if anim then
+                    for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
                         stopMovementPriority(tr)
                     end
                 end
             end
         end
     elseif stickyTarget and (not stickyHeadEnabled or hasBall or isFlying or sideTechAnimPlaying
-                            or autoRushBlockHeadsTech or autoRushBlocksHeadTech()) then
+                            or autoRushBlocksHeadTech()) then
         detachSticky()
     end
 
@@ -2308,7 +2110,7 @@ track(RunService.Heartbeat:Connect(function(dt)
 end))
 
 -------------------------------------------------
--- GUI BUILD
+-- GUI
 -------------------------------------------------
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Football Hub 2026",
@@ -2320,7 +2122,7 @@ local MainTab = Window:CreateTab("Movement")
 local TechTab = Window:CreateTab("Head Tech")
 local ConfigTab = Window:CreateTab("Config")
 
-MainTab:CreateSection("Basic Movement")
+MainTab:CreateSection("Basic")
 registerSlider("walkSpeed", MainTab:CreateSlider({
     Name = "WalkSpeed (>=21 locks; drives Auto Rush)",
     Range = {18, 150}, Increment = 1, CurrentValue = walkSpeed,
@@ -2332,17 +2134,15 @@ registerSlider("gravityVal", MainTab:CreateSlider({
     Callback = function(v) gravityVal = v; scheduleAutoSave() end,
 }))
 
-MainTab:CreateSection("Movement Modifiers")
+MainTab:CreateSection("Modifiers")
 registerToggle("noclipEnabled", MainTab:CreateToggle({
     Name = "Noclip",
     CurrentValue = noclipEnabled,
     Callback = function(v) noclipEnabled = v; scheduleAutoSave() end,
 }))
-
-MainTab:CreateSection("Utility")
 MainTab:CreateButton({Name = "Refresh Character", Callback = function() refreshCharacter() end})
 
-MainTab:CreateSection("Flight Tech")
+MainTab:CreateSection("Flight")
 registerToggle("isFlying", MainTab:CreateToggle({
     Name = "Enable Flight",
     CurrentValue = isFlying,
@@ -2368,7 +2168,7 @@ registerSlider("pullSpeed", MainTab:CreateSlider({
 
 TechTab:CreateSection("Auto Rush")
 registerToggle("autoRushUnlocked", TechTab:CreateToggle({
-    Name = "Enable Auto Rush + Swat (press R to engage)",
+    Name = "Enable Auto Rush + Swat (press R)",
     CurrentValue = autoRushUnlocked,
     Callback = function(v)
         if v then autoRushUnlocked = true else disableAutoRush() end
@@ -2382,7 +2182,7 @@ registerToggle("isHeadModEnabled", TechTab:CreateToggle({
     CurrentValue = isHeadModEnabled,
     Callback = function(v)
         isHeadModEnabled = v
-        if v then applyToAllHeads() else applyToAllHeads() end
+        applyToAllHeads()
         applyTransparencyToAllHeads()
         scheduleAutoSave()
     end,
@@ -2409,17 +2209,17 @@ registerToggle("autoSideTechEnabled", TechTab:CreateToggle({
 
 TechTab:CreateSection("Jump Boost")
 registerToggle("jumpBoostEnabled", TechTab:CreateToggle({
-    Name = "Enable Jump Boost",
+    Name = "Enable Jump Boost (launches you when the head you're on jumps)",
     CurrentValue = jumpBoostEnabled,
     Callback = function(v) jumpBoostEnabled = v; scheduleAutoSave() end,
 }))
 registerSlider("jumpBoostStuds", TechTab:CreateSlider({
-    Name = "Jump Boost Height",
+    Name = "Jump Boost Height (studs)",
     Range = {0, 100}, Increment = 1, CurrentValue = jumpBoostStuds,
     Callback = function(v) jumpBoostStuds = v; scheduleAutoSave() end,
 }))
 registerSlider("jumpBoostChance", TechTab:CreateSlider({
-    Name = "Jump Boost Chance",
+    Name = "Jump Boost Chance (%)",
     Range = {0, 100}, Increment = 5, CurrentValue = jumpBoostChance,
     Callback = function(v) jumpBoostChance = v; scheduleAutoSave() end,
 }))
@@ -2438,62 +2238,53 @@ registerSlider("diveBoostLevel", TechTab:CreateSlider({
 
 TechTab:CreateSection("Rocket Boost")
 registerToggle("rocketBoostEnabled", TechTab:CreateToggle({
-    Name = "Enable Rocket Boost (works with extended heads)",
+    Name = "Rocket Boost (works with extended heads)",
     CurrentValue = rocketBoostEnabled,
     Callback = function(v) rocketBoostEnabled = v; scheduleAutoSave() end,
 }))
 registerSlider("rocketBoostChance", TechTab:CreateSlider({
-    Name = "Rocket Boost Chance",
+    Name = "Rocket Boost Chance (%)",
     Range = {0, 100}, Increment = 5, CurrentValue = rocketBoostChance,
     Callback = function(v) rocketBoostChance = v; scheduleAutoSave() end,
 }))
 
 TechTab:CreateSection("Sticky Head")
 registerToggle("stickyHeadEnabled", TechTab:CreateToggle({
-    Name = "Sticky Head (drops on target's dive)",
+    Name = "Sticky Head (drops on target dive)",
     CurrentValue = stickyHeadEnabled,
     Callback = function(v) stickyHeadEnabled = v; scheduleAutoSave() end,
 }))
 
 ConfigTab:CreateSection("Auto Save")
 registerToggle("autoLoadEnabled", ConfigTab:CreateToggle({
-    Name = "Auto-save / auto-load settings",
+    Name = "Auto-save / auto-load",
     CurrentValue = autoLoadEnabled,
     Callback = function(v)
         autoLoadEnabled = v
         if v then
             writeAutoConfig(snapshotSettings())
-            Rayfield:Notify({Title="Config", Content="Auto-save ON.", Duration=3})
+            Rayfield:Notify({Title="Config", Content="Auto-save ON", Duration=3})
         else
             deleteAutoConfig()
-            Rayfield:Notify({Title="Config", Content="Auto-save OFF.", Duration=3})
+            Rayfield:Notify({Title="Config", Content="Auto-save OFF", Duration=3})
         end
     end,
 }))
 
--------------------------------------------------
--- APPLY SAVED SETTINGS
--------------------------------------------------
 if not priorState then
     task.spawn(function()
         task.wait(0.6)
         if not alive or not hasFileApi then return end
-        local saved = readAutoConfig()
-        if not saved or not saved.autoLoadEnabled then return end
-        applySettings(saved)
-        Rayfield:Notify({Title="Config", Content="Auto-loaded last session settings.", Duration=4})
+        local s = readAutoConfig()
+        if not s or not s.autoLoadEnabled then return end
+        applySettings(s)
+        Rayfield:Notify({Title="Config", Content="Auto-loaded.", Duration=4})
     end)
 end
 
--------------------------------------------------
--- HOOK LOCAL PLAYER
--------------------------------------------------
 track(localPlayer.CharacterAdded:Connect(hookChar))
 if localPlayer.Character then hookChar(localPlayer.Character) end
 
--------------------------------------------------
--- TEARDOWN
--------------------------------------------------
 local function teardown()
     alive = false
     clearThrowWatch()
@@ -2502,8 +2293,8 @@ local function teardown()
     for inst, t in pairs(origTransparency) do
         pcall(function() if inst and inst.Parent then inst.Transparency = t end end)
     end
-    for head, cc in pairs(origCanCollide) do
-        pcall(function() if head and head.Parent then head.CanCollide = cc end end)
+    for h, cc in pairs(origCanCollide) do
+        pcall(function() if h and h.Parent then h.CanCollide = cc end end)
     end
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     conns = {}
@@ -2511,15 +2302,11 @@ local function teardown()
 end
 
 getgenv()[DESTROY_KEY] = teardown
-local registry = getgenv()[TEARDOWN_REGISTRY]
-if type(registry) == "table" then
-    registry[#registry+1] = teardown
-else
-    getgenv()[TEARDOWN_REGISTRY] = {teardown}
-end
+local reg = getgenv()[TEARDOWN_REGISTRY]
+if type(reg) == "table" then reg[#reg+1] = teardown else getgenv()[TEARDOWN_REGISTRY] = {teardown} end
 
 Rayfield:Notify({
     Title = "Ultimate Football Hub 2026",
-    Content = "Loaded. Sticky head drops on target dive.",
+    Content = "Loaded. Jump boost now fires reliably from any head.",
     Duration = 6,
 })
